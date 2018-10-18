@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------
 # processSkeleton.pm
 #
-# $Id: processSkeleton.pm,v 1.56 2017/01/05 23:23:14 db2admin Exp db2admin $
+# $Id: processSkeleton.pm,v 1.109 2018/10/16 22:30:13 db2admin Exp db2admin $
 #
 # Description:
 # Script to process a skeleton
@@ -30,7 +30,200 @@
 #
 # ChangeLog:
 #
+# Revision 1.98  2018/08/14 22:01:20  db2admin
+# add inline CTL cards to the )DOF statement
+#
 # $Log: processSkeleton.pm,v $
+# Revision 1.109  2018/10/16 22:30:13  db2admin
+# add in the ability to call the PERLDBI ODBC module
+#
+# Revision 1.108  2018/10/10 02:30:03  db2admin
+# correct bug in assign
+#
+# Revision 1.107  2018/10/10 02:27:05  db2admin
+# create a synonym for ASET called ASSIGN
+#
+# Revision 1.106  2018/10/09 21:43:52  db2admin
+# A couple of changes:
+# 1. Added in a new statement )ASET. Same as )SET but no statement evaluation is done
+# 2. Corrected issued with a variable being preceded by a backslash
+#
+# Revision 1.105  2018/10/09 03:04:19  db2admin
+# 1. add in new SPLIT function
+# )FUNC SPLIT x = "string" "delimiter" <element to return> <max elements>
+# 2. Modify INSTR function to include start pos or Occurence
+# )FUNX INSTR x = 'string to search for> <string to search in> [<start pos>|OCC:<occurence>]
+#
+# Revision 1.104  2018/09/06 08:27:04  db2admin
+# 1. Correct an issue looping in DOF definitions when wrong control type entered
+# 2. Allow regex control characters to be entered as delimiters in CTL records
+#
+# Revision 1.103  2018/08/27 04:17:47  db2admin
+# correct bug in variable substitution
+#
+# Revision 1.102  2018/08/26 23:50:15  db2admin
+# correct issue when XDOT doesn't have enough parameters
+#
+# Revision 1.101  2018/08/24 05:56:14  db2admin
+# 1. Add in UPPER and LOWER functions
+# 2. Correct issue with )SEL/)ENDSEL matching counts
+#
+# Revision 1.100  2018/08/15 06:15:05  db2admin
+# Automatically calulate field length for FIXED CTL records where it has been ommitted
+#
+# Revision 1.99  2018/08/15 02:22:28  db2admin
+# add in INLINE CTL cards to )PARSE, )FDOF, )DOEXEC
+# correct bug that occurs when using )LEAVE within a )SEL within a )DOEXEC
+#
+# Revision 1.97  2018/08/14 00:44:44  db2admin
+# correct comments around NOT_EMPTY function
+#
+# Revision 1.96  2018/08/13 22:41:07  db2admin
+# when reading in INLINE code preserve the CRLF's. This will allow
+# inline comments to be processed correctly
+#
+# Revision 1.95  2018/08/07 22:10:41  db2admin
+# 1. adjust the )SEL/)ENDSEL balancing count processing
+#
+# Revision 1.94  2018/08/06 05:49:14  db2admin
+# add in the ability to put multi line SQL in the skeleton
+#
+# Revision 1.93  2018/08/06 01:02:45  db2admin
+# move check for )DOT/)XDOT existenece to after the check for )SEL to
+# ensure that the )ENDDOTs within a failed )SEL aren't flagged as
+# orphan
+#
+# Revision 1.92  2018/06/14 00:04:39  db2admin
+# correct a bug in file name scanning
+#
+# Revision 1.91  2018/06/06 00:11:46  db2admin
+# 1. Add in new )FILE command
+# 2. alter )DOF command to populate DOF_ variables with file information
+#
+# Revision 1.90  2018/05/29 04:38:03  db2admin
+# add in EMPTY and NOT_EMPTY functions to test variables for content
+#
+# Revision 1.89  2018/05/21 05:42:56  db2admin
+# add in )RESETOUTPUT
+# add in message on )STOP statement
+#
+# Revision 1.88  2018/05/21 04:29:51  db2admin
+# add in new commands )STOP and )EXIT
+# )STOP will halt the skeleton immediately
+# )EXIT will either skip to the end of the current imbed or exit the skeleton if no imbed is found
+#
+# Revision 1.87  2018/05/10 23:33:07  db2admin
+# add in )NEXT statement definition to skip tothe next loop iteration
+#
+# Revision 1.86  2018/05/10 07:48:39  db2admin
+# Add in intial )LAST or )LEAVE processing - not tested a lot
+#
+# Revision 1.85  2018/05/09 04:34:12  db2admin
+# clean up file processing code and remove duplication
+# close the file after being processed
+#
+# Revision 1.84  2018/04/30 21:55:51  db2admin
+# expand the definition of a numeric field type and make processing more consistent
+#
+# Revision 1.83  2018/04/24 02:06:35  db2admin
+# add in variables to manage returning error messages back to the guiding
+# skeleton - :lastError and :lastStatementError - lastStatementError is
+# cleared for every control statement
+#
+# Revision 1.82  2018/04/23 23:41:34  db2admin
+# comment out the 'substituteVariables' call in evaluateCondition because the substitutions
+# were being done twice. This was causing any escaped :'s to be treated as variables
+# as the escape character is removed by the time the second substitute occurs
+#
+# Revision 1.81  2018/04/23 05:57:51  db2admin
+# escape out the leading ) of commands on )WHEN statements
+#
+# Revision 1.80  2018/04/23 04:41:49  db2admin
+# close cursor when finished with it in processCHECKFORROWS
+#
+# Revision 1.79  2018/04/23 03:58:35  db2admin
+# replace condition checking in )SEL and SELELSE with processing in processCondition
+# to ensure that it is consistent
+#
+# Revision 1.78  2018/04/23 01:36:28  db2admin
+# Made the following changes:
+# 1. corrected references to )OPEN - replaced with )LOGON
+# 2. implemented new statements -
+#      )SETLEFTJUSTTAB to set the left justification tab character
+#      )SETRIGHTJUSTTAB to set the right justification tab character
+# 3. implemented new ROW_EXISTS and NO_ROW_EXISTS functions (usable on )SEL, )SELELSE and )WHEN statements
+#    to check to see if any rows are returned for a provided SQL statement
+#
+# Revision 1.77  2018/04/22 00:30:16  db2admin
+# processCondition added but not linked to other code
+#
+# Revision 1.76  2018/04/19 23:29:20  db2admin
+# 1. Correct a number of spelling mistakes in the code comments
+# 2. Remove unused variable TMP_File
+# 3. Add in new command )DOSEL to populate variables based on a select statement
+#
+# Revision 1.75  2018/04/18 01:26:02  db2admin
+# allow the escaping of the : character to allow strings beginning with : to not be confused with variables
+#
+# Revision 1.74  2018/04/17 04:39:25  db2admin
+# Add in )WHEN command
+# Simplify displayDebug code to speed up the display and reduce checks
+# Modify default value of debugLevel to -1 and change code to preemptively return if the default debug value is found
+#
+# Revision 1.73  2018/04/16 05:45:08  db2admin
+# allow delimited control records to use defaulted occurrence positions
+#
+# Revision 1.72  2018/04/16 02:06:36  db2admin
+# adjust ctl file allocation for FDOF requests to be more memory efficient
+#
+# Revision 1.71  2018/04/16 01:30:58  db2admin
+# modify the way control files are added to the array to correct a bug in array allocation
+#
+# Revision 1.70  2018/04/12 05:51:01  db2admin
+# Add in a )PARSE command to allow the easy break up of variables into components
+#
+# Revision 1.69  2018/04/12 02:39:11  db2admin
+# correct bug that occurs when file delimiters are special characters
+#
+# Revision 1.68  2018/03/28 20:51:44  db2admin
+# Set a default limit of 2000 rows to be returned by FTAB (can be user modified)
+#
+# Revision 1.67  2018/03/28 01:10:20  db2admin
+# 1. Maximum default generated HTML string set to 5Mb characters
+# 2. maximum default generated HTML table set to 60Kb characters
+# 3. added in limiting for FTAB generated data
+#
+# Revision 1.65  2018/01/04 00:49:12  db2admin
+# add in code to allow the implicit specification of a variable in a )FUNC command
+# i.e. )FUNC int :a = :a could be written as )FUNC int :a
+# also improved the error message for operator not found to specify the function type
+#
+# Revision 1.64  2017/12/27 01:18:17  db2admin
+# Add in REPL and WEBSAFE functions
+#
+# Revision 1.63  2017/08/08 23:44:26  db2admin
+# add code to allow variable names to be enclosed by braces {} to simplify variable identification
+#
+# Revision 1.62  2017/08/08 23:13:15  db2admin
+# Allow variable substitution on the )DMPHDR card
+#
+# Revision 1.61  2017/08/08 06:00:39  db2admin
+# initialise the loop count variables to zero at start of loop
+#
+# Revision 1.60  2017/07/19 01:13:06  db2admin
+# allow SQL= and FILE= as alternatives to SQL: and FILE: (all have identical meaning)
+#
+# Revision 1.59  2017/04/05 22:50:48  db2admin
+# only do decimal places if there is a decimal point
+#
+# Revision 1.58  2017/04/05 22:48:29  db2admin
+# change the selection criteria for truncating and decimal places
+#
+# Revision 1.57  2017/04/05 05:56:43  db2admin
+# Add in functionality that allows the setting of displayed decimal places
+# Allow the setting of decimal places on the TRUNCZEROES card
+# add in )DECIMALPLACES control card
+#
 # Revision 1.56  2017/01/05 23:23:14  db2admin
 # add in )GRAPHLABEL command
 #
@@ -243,6 +436,7 @@ package processSkeleton;
 use strict;
 use warnings;
 use Data::Dumper qw(Dumper);
+use User::pwent; # for getpwuid and getgrnam
 use commonFunctions qw(commonVersion getOpt myDate trim $getOpt_optName $getOpt_optValue @myDate_ReturnDesc);
 use calculator qw(calcVersion evaluateInfix $calcDebugLevel $calcDebugModules);
 use Exporter;
@@ -251,13 +445,18 @@ my $ug;
 # my $ug    = Data::UUID->new;
 
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(processSkeleton skelVersion formatSQL $skelDebugLevel $skelCache $ctlCache $execCtlCache testRoutine $testRoutines $outputMode $skelShowSQL $DBIModule $skelDebugModules $skelDelimiter $skelVerboseSQLErrors $DOCMD_allowedStatements);
+our @EXPORT_OK = qw(processSkeleton skelVersion formatSQL $skelDebugLevel $skelCache $ctlCache $execCtlCache testRoutine $testRoutines $outputMode $skelShowSQL $DBIModule $skelDebugModules $skelDelimiter $skelVerboseSQLErrors $DOCMD_allowedStatements $skelMaxOutput $skelMaxTableOut $skelMaxRows);
 
 # published variables
 our $skelDelimiter = ',';   # delimiter to be used when generating dump file using )DMP
+our $skelMaxOutput = 5000000; # max string length length to be returned - this isnot an absolute value - output will be not be added to the string once it 
+                            # exceeds this limit but the string wont be truncated to this length
+our $skelMaxRows = 2000;     # max number of rows to be displayed by the FTAB Command
+our $skelMaxTableOut = 60000; # max length length of the output generated by a FTAB command - output will be not be added to the string once it 
+                            # exceeds this limit but the string wont be truncated to this length
 our $skelDebugModules = 'All';  # variable indicating which modules debug messages should be produced for
 our $skelShowSQL = 'No';    # variable indicating if generated SQL should be displayed (defaults to NO)
-our $skelDebugLevel = 0;    # by default dont list any debug information
+our $skelDebugLevel = -1;   # by default dont list any debug information 
 our $skelVerboseSQLErrors = 'No';    # by default dont print out verbose SQL erros details (i.e. dont print out when no rows found and dont print SQL)
 our $skelCache = 1;         # by default always cache skeletons (i.e reuse already loaded skeletons)
 our $ctlCache = 1;          # by default always cache CTL files (i.e reuse already loaded skeletons)
@@ -277,7 +476,7 @@ if (exists($ENV{'SKL_VIEWQUAL'}) ) { $skelViewQual = $ENV{'SKL_VIEWQUAL'}; }
 my $skelSID;
 if (exists($ENV{'ORACLE_SID'}) ) { $skelSID = $ENV{'ORACLE_SID'}; }
 my $skelTNS;
-if (exists($ENV{'TNS_ADMIN'}) ) { $skelTNS = $ENV{'SKL_TNS'}; }
+if (exists($ENV{'TNS_ADMIN'}) ) { $skelTNS = $ENV{'TNS_ADMIN'}; }
 my $skelUserID;
 if (exists($ENV{'SKL_USERID'}) ) { $skelUserID = $ENV{'SKL_USERID'}; }
 
@@ -296,11 +495,17 @@ my $currentLinePosition = 0 ;             # current scan position in the line be
 my $outputLineCount = 0 ;                 # count of the number of lines that have been output
 my $skelReturnString = '' ;               # string to hold the generated output
 my $skelTermChar = " ()!,.;'~=<>+\|\"-/\\\n"; # characters that will terminate a token within a skeleton
+my $numericFieldTypes = ' 2 3 4 5 6 7 8 -5 -6 NUMERIC'; # field types that define numeric values
 my $machine = '';                         # server the script is running on
 my @traceLevelStack = ();                 # stack to manage trace levels
 my $SQLError = 1;                         # flag indicating that the open cursor returned no rows (worked but couldn't find anything)
 my %weekDays = ( "MON", "Monday", "TUE", "Tuesday", "WED", "Wednesday", "THU", "Thursday", "FRI", "Friday", "SAT", "Saturday", "SUN", "Sunday");
 my $truncateTrailingZeroes = 0;           # flag indicating if trailing zeroes should be removed from returned database values
+my $cursorDecimalPlaces = -1;             # Number of decimal places to retain after truncating zeroes
+my $currentVariable = '';                 # this holds the name of the variable to be assigned the return value from a )FUNC statement 
+my $leftJustTab = '!';                    # character to be used as left justified tab stop
+my $rightJustTab = '~';                   # character to be used as right justified tab stop
+my $statementError = '';                  # variable to hold the last error message
 
 # Database connection detail arrays ....
 
@@ -327,6 +532,8 @@ my $skelDOT_resumeLevel = 0;              # DOT stack Value when processing will
 my $skelDOTCount=0;                       # Count of )DOTs found. )DOT increments this and )ENDDOT decrements - should be zero at end
 my @controlStack;                         # stack that will contain the values of skelSELCount, skelDOTCount and skelDOFCount at entry to )DOT, )DOF and )SEL clauses
                                           # This will be used in )ENDSEL/)ENDDOT/)ENDDOF processing to ensure that control structures aren't incorrect ()SEls spanning )DOTs etc)
+my $lastFlagSet = 0;                      # Indicates that a )LAST has been encountered and has skipped to the )END... card
+                                          
 # DOF Variables
 my %DOFLocation;                          # associative array that specifies the position in the skeleton where a )ENDDOF should loop back to. Keyed by fileRef
 my $currentFileRef = '';                  # current file ref being used
@@ -512,7 +719,7 @@ sub skelVersion {
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'skelVersion'; 
-  my $ID = '$Id: processSkeleton.pm,v 1.56 2017/01/05 23:23:14 db2admin Exp db2admin $';
+  my $ID = '$Id: processSkeleton.pm,v 1.109 2018/10/16 22:30:13 db2admin Exp db2admin $';
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
   my @N = split(",",$nameStr);
@@ -930,27 +1137,27 @@ sub displayDebug {
   # returns: nothing
   # -----------------------------------------------------------
 
+  if ( $skelDebugLevel == -1 ) { return; }    # by default dont do any debug processing
+
   my $lit = shift;
   my $call_debugLevel = shift;
   my $sub = shift;                            # get the subroutine name of the calling 
+
+  if ( ! defined($call_debugLevel) ) { $call_debugLevel = 1; } # if debug level not specified then set it to 1
   
-  if ( ! defined($lit) ) { $lit = "" } # if nothing passed then default to empty string
-  if ( ! defined($sub) ) { $sub = "Unknown Subroutine" } # if nothing passed then default
-  my $uc_sub = uc($sub);
+  # Display a passed message with timestamp if the skelDebugLevel has been set and is the same or exceeded
+  if ( $call_debugLevel <= $skelDebugLevel ) {
+      
+    my $uc_sub = uc($sub);
+    if ( ! defined($sub) ) { $sub = "Unknown Subroutine" } # if nothing passed then default
+    # only print messages if the message comes from a specified subroutine, processDEBUG or the modules to check var is 'ALL'
+    if ( (uc($skelDebugModules) eq 'ALL') || ( $sub eq 'processDEBUG') || ( uc("$skelDebugModules") =~ /$uc_sub/ ) ) {  # check if ok to print
+
+      if ( ! defined($lit) ) { $lit = "" } # if nothing passed then default to empty string
+
+      if ( length($sub) > $maxSubroutineLen ) { $maxSubroutineLen = length($sub) ; }       # reset length as necessary
+      $sub = substr($sub . '                                                                 ',0,$maxSubroutineLen);  # pad out subroutine name as necessary
    
-  # only print messages if the message comes from a specified subroutine, processDEBUG or the modules to check var is 'ALL'
-  if ( (uc($skelDebugModules) eq 'ALL') || ( $sub eq 'processDEBUG') || ( uc("$skelDebugModules") =~ /$uc_sub/ ) ) {  # check if ok to print
-
-    if ( length($sub) > $maxSubroutineLen ) { $maxSubroutineLen = length($sub) ; }       # reset length as necessary
-    $sub = substr($sub . '                                                                 ',0,$maxSubroutineLen);  # pad out subroutine name as necessary
-
-    if ( ! defined($call_debugLevel) ) { # if debug level not specified then set it to 1
-      $call_debugLevel = 1;
-    }
-
-    # Display a passed message with timestamp if the skelDebugLevel has been set
-
-    if ( $call_debugLevel <= $skelDebugLevel ) {
       my $tDate = getDate();
       my $tTime = getTime();
 
@@ -962,6 +1169,7 @@ sub displayDebug {
       }
     }
   }
+  
 } # end of displayDebug
 
 sub displayError {
@@ -985,8 +1193,42 @@ sub displayError {
   }
   else {
     print STDERR "$sub - $tDate $tTime - $currentActiveSkel($tmpLine) : ERROR : $lit\n";
+    setVariable('lastError',$lit);
+    $statementError = $lit;
   }
 } # end of displayError
+
+sub loadInlineCards {
+  # -----------------------------------------------------------
+  # this routine will load a string from inline statements
+  #
+  # usage: loadInlineCards(<calling routine>);
+  # returns: the inline string
+  # -----------------------------------------------------------
+  
+  my $callingRoutine = shift;
+  my $currentSubroutine = 'loadInlineCards'; 
+
+  my $cards = "";
+  $currentSkelLine++;
+    
+  while ( defined($skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]) ) { # if the next line exists then keep on processing
+    displayDebug("Card# $currentSkelLine is $skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]",2,$currentSubroutine);
+    if ( uc(substr(trim($skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]),0,14)) eq ")END_OF_INLINE" ) { # reached the inline cards terminator
+      $cards = substituteVariables($cards);                      # Substitute variables as necessary
+      return ($cards);
+    }
+    $cards .= " " . trim($skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]) . "\n";
+    $currentSkelLine++;
+  }
+  
+  # really should never get here - to be here you have hit the end of the skeleton
+  $cards = ''; 
+  displayError("[loadInlineCards] Did not find a )END_OF_INLINE card", $callingRoutine);
+  
+  return $cards;
+
+} # end of loadInlineCards
 
 sub loadSQL {
   # -----------------------------------------------------------
@@ -1353,6 +1595,101 @@ sub getToken {
 
 } # end of getToken
 
+sub getFileInformation {
+  # -----------------------------------------------------------
+  # Gather information about the passed file name
+  #
+  # Will create/update the following variables:
+  #
+  #   {suffix}_mode 
+  #   {suffix}_uid 
+  #   {suffix}_gid
+  #   {suffix}_size
+  #   {suffix}_accessed
+  #   {suffix}_modified 
+  #   {suffix}_chginode
+  #   {suffix}_user
+  #   {suffix}_group
+  #
+  # Usage: getFileInformation(filename,suffix)
+  # Returns: nothing but sets a number of internal variables
+  # -----------------------------------------------------------
+
+  my $currentSubroutine = 'getFileInformation'; 
+  my $file = shift;
+  my $suff = shift;
+  
+  if ( ! defined($suff) ) { $suff = 'DOF' } ;
+  
+  # stat the file  ....
+
+  my ($a, $m, $c) ;
+  my ($dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($file);
+
+  if ( defined($size) ) { # stat worked
+    $a = scalar localtime $atime;
+    $m = scalar localtime $mtime;
+    $c = scalar localtime $ctime;
+  }
+  else { # stat failed
+    $dev = 'Not Found';
+    $ino = 'Not Found';
+    $mode = 'Not Found';
+    $nlink = 'Not Found';
+    $uid = 'Not Found';
+    $gid = 'Not Found';
+    $rdev = 'Not Found';
+    $size = 'Not Found';
+    $blksize = 'Not Found';
+    $blocks = 'Not Found';
+    $atime = 'Not Found';
+    $mtime = 'Not Found';
+    $ctime = 'Not Found';
+    $a = 'Not Found';
+    $m = 'Not Found';
+    $c = 'Not Found';
+  }
+  
+  setVariable($suff . '_mode', $mode);
+  setVariable($suff . '_uid', $uid);
+  setVariable($suff . '_gid', $gid);
+  setVariable($suff . '_size', $size);
+  setVariable($suff . '_accessed', $a);
+  setVariable($suff . '_modified', $m);
+  setVariable($suff . '_chginode', $c);
+
+  if ( $size ne 'Not Found' ) { # stat worked
+    my $userName = '';
+    my $x = getpwuid($uid);
+#print "Ref: " . ref($x) . "\n"; 
+    if ( ref($x) eq 'User::pwent' ) { # an array was returned
+      $userName = $$x[0];
+    }
+    else {
+      $userName = $x;
+    }
+    setVariable($suff . '_user', $userName ) ; 
+    setVariable($suff . '_group', getgrgid($gid));
+  }
+  else {
+    setVariable($suff . '_user', 'Not Found');
+    setVariable($suff . '_group', 'Not Found');
+  }
+  
+  my $directory = '';
+  my $fname = '';
+  if ( $file =~ /[\/\\]/ ) { # it contains one of / or \
+    ($directory, $fname) = ($file =~ /(.*)[\/\\](.*)/);
+  }
+  else {  
+    $fname = $file;
+  }  
+  
+  setVariable($suff . '_directory',$directory);
+  setVariable($suff . '_file',$fname);
+
+} # end of getFileInformation
+
 sub getDate {
   # -----------------------------------------------------------
   #  Routine to return a formatted Date in YYYY.MM.DD format
@@ -1419,6 +1756,8 @@ sub outputLine {
   my $line = shift;
   $line = putInTabs($line); 
 
+  if ( length($skelReturnString) > $skelMaxOutput ) { return; } # once the limit is exceeded add no more
+
   $outputLineCount++;
 
   if ( $outputMode eq "STDOUT" ) {
@@ -1442,14 +1781,25 @@ sub outputLine {
     }
   }
 
-  displayDebug("\$skelReturnString=$skelReturnString",2,$currentSubroutine);
+  # check if we have now exceeded the limit
+  if ( length($skelReturnString) > $skelMaxOutput ) {
+    $skelReturnString .= "\n\nOutput Terminated as it has exceeded the limit of $skelMaxOutput characters\n";
+    if ( $outputMode eq "HTTP" ) {
+      $skelReturnString .= "</BODY></HTML>"; # put HTML termination strings in just in case
+    }
+  }
+
+  my $tmpLen = length($skelReturnString);
+  displayDebug("\$newString=$line",2,$currentSubroutine);
+  displayDebug("ret string length=$tmpLen",2,$currentSubroutine);
+  displayDebug("\$skelReturnString=$skelReturnString",3,$currentSubroutine);
 
 } # end of outputLine
 
 sub outputLineNT {
   # -----------------------------------------------------------
   # This routine is the main conduit for output from processSkeleton
-  # it is basically the same as outputLine byt with no tab replacemnent
+  # it is basically the same as outputLine but with no tab replacemnent
   #
   # Usage: outputLineNT('text');
   # Returns : nothing
@@ -1625,8 +1975,40 @@ sub substituteVariables {
       $i = index($inputString,':',$leftEdge);    # search for the next ':'
       $linePos = $i + 1;                         # skip to the next char
       $fieldStart = $i ;                         # establish the beginning of the field name (if no cursor ref is supplied)
-      displayDebug("(at start) \$i=$i",3,$currentSubroutine);
+      displayDebug("(at start) \$i=$i",1,$currentSubroutine);
 
+      # check if the : is preceded by a backslash (in which case it is NOT a variable)
+      if ( $i > 1 ) {                                # cant have a cursor ref it is less than 1
+        # processSkeleton only allows the escaping of a : character or in the event that a \ validly precedes a : then that single \ can be escaped
+        # this means that the only situations that can arise are:
+        #    1. test\:VAR meaning test:VAR (no variable substitution)
+        #    2. test\\:VAR meaning test\:VAR (variable substitution)A
+        #    3. test:VAR meaning test:VAR (variable substitution)
+        if ( substr($inputString,$i-1,1) eq '\\' ) { # May be case 1 or case 2
+          if ( substr($inputString,$i-2,2) eq '\\\\' ) { # it is case 2
+            # we just need to remove one of the \s and then treat as a normal variable substitution
+            displayDebug("Colon will be treated as a variable as it is not escaped \$linepos=$linePos, \$i: $i" . ",char=" . substr($inputString,$i-1,1),1,$currentSubroutine);
+            my $tmpString = substr($inputString, 0, $i-1) . substr($inputString, $i);   # just move the string left 1 char
+            $inputString = $tmpString;
+            $i--;              # adjust the pointer to the colon
+            $fieldStart = $i;  # adjust the start of the field being tested
+            $linePos = $i + 1; # adjust the start of the variable name
+          }
+          else { # the : is being escaped and so isn't a variable indicator (case 1)
+            displayDebug("Colon will not be treated as a variable as it is escaped \$linepos=$linePos, \$i: $i" . ",char=" . substr($inputString,$i-1,1),1,$currentSubroutine);
+            $convString .= substr($inputString, $leftEdge, $fieldStart - $leftEdge - 1) . ":";   # just move across the text from the end of the last field to just after the ':' character
+            $leftEdge = $linePos;                      # Reset the leftedge to be just after the ':' character just worked with
+            if ( index($inputString,':',$leftEdge) == -1 ) {                             # no more colons in the string
+              $linePos = -1;                                                             # set line position off    
+              $convString .= substr($inputString, $fieldStart+1);                        # copy across the remaining string bit
+              displayDebug("No more \: to process in input string",3,$currentSubroutine);
+              last;                                                                      # leave the while loop as nothing more to process
+            }
+            next;
+          }
+        }
+      }
+      
       # check if there is a cursor reference (defined as a '.' preceding the ':')
       if ( $i > 1 ) {                               # cant have a cursor ref it is less than 1
         if ( substr($inputString,$i-1,1) eq '.' ) { # there should be a cursor reference as we have a .: in the middle of the string 
@@ -1647,18 +2029,32 @@ sub substituteVariables {
           }
         }
       }
-      # $tRef now contains the name of the cursor
 
+      # $tRef now contains the name of the cursor
       displayDebug("Cursor is:$tRef, fieldStart=$fieldStart, \$i=$i",2,$currentSubroutine);
       # now identify the variable name we are looking for
       my $varName = "";
       $varTerminatedByPeriod = 0;
+      my $varEnclosedInBrackets = 0;
 
       if ( $linePos <= length($inputString) ) {displayDebug("termChar=$skelTermChar, cmpChar=" . substr($inputString, $linePos, 1),3,$currentSubroutine); }
-      while ( ($linePos <= length($inputString) ) && (index( $skelTermChar, substr($inputString, $linePos, 1) ) == -1 ) ) {
-        $varName = $varName . substr($inputString, $linePos, 1);
-        $linePos++;
-        if ( $linePos <= length($inputString) ) { displayDebug("varName= $varName, termChar=$skelTermChar, cmpChar=" . substr($inputString, $linePos, 1),3,$currentSubroutine); }
+ 
+      # $linePos is pointing to the start of the variable name 
+      if ( substr($inputString, $linePos, 1) eq '{' ) { # variable name is enclosed in brackets ... so just look for closing bracket
+        $varEnclosedInBrackets = 1;
+        $linePos++;     # move to the next char
+        while ( ($linePos <= length($inputString) ) && (substr($inputString, $linePos, 1) ne '}' ) ) {
+          $varName = $varName . substr($inputString, $linePos, 1);
+          $linePos++;     # move to the next char
+        }
+        if ($linePos <= length($inputString) ) { $linePos++; }    # move to the next char (skip the terminating bracket
+      }
+      else { # normal variable identification
+        while ( ($linePos <= length($inputString) ) && (index( $skelTermChar, substr($inputString, $linePos, 1) ) == -1 ) ) {
+          $varName = $varName . substr($inputString, $linePos, 1);
+          $linePos++;
+          if ( $linePos <= length($inputString) ) { displayDebug("varName= $varName, termChar=$skelTermChar, cmpChar=" . substr($inputString, $linePos, 1),3,$currentSubroutine); }
+        }
       }
 
       displayDebug("Variable: $varName, \$linePos=$linePos",1,$currentSubroutine);
@@ -1675,10 +2071,15 @@ sub substituteVariables {
         next;                                                                        # loop aroud to get to the next variable
       }
       else { #var name has been identified
-        if ( substr($inputString, $linePos, 1) eq '.' ) { # skip periods terminating variables
-          $linePos++; 
-          $varTerminatedByPeriod = 1;
-        } 
+        if ( $varEnclosedInBrackets ) { # period not terminating variable
+          # treat any subsequent periods as just characters
+        }
+        else {
+          if ( substr($inputString, $linePos, 1) eq '.' ) { # skip periods terminating variables
+            $linePos++; 
+            $varTerminatedByPeriod = 1;
+          } 
+        }
       }
       $fieldEnd = $linePos -1;
 
@@ -1754,6 +2155,7 @@ sub substituteVariables {
             # SQL_TIME            10
             # SQL_TIMESTAMP       11
             # SQL_VARCHAR         12
+            #                     93    Timestamp
             # SQL_LONGVARCHAR     -1
             # SQL_BINARY          -2
             # SQL_VARBINARY       -3
@@ -1811,14 +2213,14 @@ sub substituteVariables {
         if ( $varTerminatedByPeriod) { # add the period back to the end of the string ....
           $varName .= '.';
         } 
-        if ( $tRef eq "" ) { # no cursor ref supplied
+        if ( $origRef eq "" ) { # no cursor ref supplied
           $skelFieldValue = "\:$varName";
         }
         else { # add in the cursor ref
           $skelFieldValue = "$tRef\.\:$varName";
         }
       }
-          
+      
       # replace the variable into the line 
       displayDebug("++convString=$convString, inputString=$inputString, leftEdge=$leftEdge,fieldStart=$fieldStart,fieldEnd=$fieldEnd, substr=" . substr($inputString, $leftEdge, $fieldStart - $leftEdge) . ",skelFieldValue=>" . $skelFieldValue . "<",2,$currentSubroutine);
           
@@ -1869,8 +2271,8 @@ sub putInTabs {
   # Routine to convert ! characters to enough spaces to match tab marks
   # specified using a )TAB command
   #
-  # note a ! will space fill to the next tab stop
-  #      a ~ will get the next token and right justify it to the next tab stop
+  # note by default: a ! will space fill to the next tab stop
+  #                  a ~ will get the next token and right justify it to the next tab stop
   #
   # Usage: putInTabs(<string>)
   # Returns: a variable with tabs characters space filled to tab stops
@@ -1883,9 +2285,9 @@ sub putInTabs {
 
   if ( $#tabEntries > 0 ) {   # tabs have been defined
     displayDebug("Adjusting tabs",1,$currentSubroutine);
-    my $iPos = index($convString, '!') ;                    # check if a left justify tab stop in the string
-    my $jPos = index($convString, '~') ;                    # check if a right justify tab stop is in the string
-    displayDebug("! Pos: $iPos, ~ Pos: $jPos, Line: $convString",2,$currentSubroutine);
+    my $iPos = index($convString, $leftJustTab) ;                    # check if a left justify tab stop in the string
+    my $jPos = index($convString, $rightJustTab) ;                    # check if a right justify tab stop is in the string
+    displayDebug("$leftJustTab Pos: $iPos, $rightJustTab Pos: $jPos, Line: $convString",2,$currentSubroutine);
 
     # if both iPos and jPos were -1 (i.e. neither string found) then their sum would be -2
     while ( $iPos + $jPos > -2 ) {                                               # tab stops found in string
@@ -1915,11 +2317,11 @@ sub putInTabs {
 	  $convString = substr($convString, 0, $iPos) . $pad . substr($convString, $iPos + 1);
         }  
         # rescan for tab stops as the positions will have changed
-	$iPos = index($convString, '!') ;
-	$jPos = index($convString, '~') ;
-        displayDebug("! Pos: $iPos, ~ Pos: $jPos, Line: $convString",2,$currentSubroutine);
+	$iPos = index($convString, $leftJustTab) ;
+	$jPos = index($convString, $rightJustTab) ;
+        displayDebug("$leftJustTab Pos: $iPos, $rightJustTab Pos: $jPos, Line: $convString",2,$currentSubroutine);
       }
-      else { # ~ must be next to process (the ~ means that the next token will be right justified to the tab stop)
+      else { # $rightJustTab must be next to process (the $rightJustTab means that the next token will be right justified to the tab stop)
 	$pad = " ";
 	my $kPos = $jPos + 1;
         # find the end of the token
@@ -1946,9 +2348,9 @@ sub putInTabs {
 	  $convString = substr($convString, 0, $jPos) . $pad . substr($convString, $jPos + 1);
 	}
 	# rescan for tab stops as the positions will have changed
-	$iPos = index($convString, '!') ;
-	$jPos = index($convString, '~') ;
-        displayDebug("! Pos: $iPos, ~ Pos: $jPos, Line: $convString",2,$currentSubroutine);
+	$iPos = index($convString, $leftJustTab) ;
+	$jPos = index($convString, $rightJustTab) ;
+        displayDebug("$leftJustTab Pos: $iPos, $rightJustTab Pos: $jPos, Line: $convString",2,$currentSubroutine);
       }
     }
   }
@@ -2004,7 +2406,8 @@ sub evaluateCondition {
   
   my $currentSubroutine = 'evaluateCondition'; 
   my $evalStr = shift;
-  my $substitutedStr = substituteVariables(trim($evalStr));
+  #my $substitutedStr = substituteVariables(trim($evalStr));
+  my $substitutedStr = trim($evalStr);
   $calcDebugLevel = $skelDebugLevel;
   $calcDebugModules = $skelDebugModules;
   my $answer = evaluateInfix($substitutedStr);
@@ -2355,12 +2758,13 @@ sub displayDataHorizontally {
     my $delimiter = substr($ctlCard,0,1);                                     # first char is the delimiter
     
     # break the preparse ctl line into it's parts (maximum of 8 parts)
-    my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split ($delimiter,$ctlCard,8); 
+    my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8); 
     displayDebug("delimType is $delimType, fldName is $fldName, fldStart is $fldStart, fldLen is $fldLen, condStart is >$condStart<",1,$currentSubroutine);
     
     if ( uc($delimType) eq "DELIMITED" ) {                                     # it is a delimited control record .... split up the data record to save time
+      $fldStart = '\\' . $fldStart;
       @delimArr = ();                                                          # initialise an array to hold the delimiter conditions
-      @delimArr = split($fldStart, $fileRecord);                               # for a delimited record the 4th parm is the delimiter so split the data record based on that
+      @delimArr = split("$fldStart", $fileRecord);                               # for a delimited record the 4th parm is the delimiter so split the data record based on that
     }
 
     my $setVar = "No";                                                         # defaults to NOT processing the record
@@ -2454,6 +2858,112 @@ sub displayDataHorizontally {
   
 } # end of displayDataHorizontally
 
+sub processPARSE {
+  # -----------------------------------------------------------
+  # Routine to parse a variable/string into other variables
+  #
+  # The PARSE control statement looks like:
+  #        )PARSE <variable> [using <CTLFileName>]]
+  #     
+  #        where variable   : string to parse
+  #              CTLFileName: the control file defining the structure of the file       
+  #
+  #        defaults are: CTLFileName: inFile.ctl 
+  #
+  # Usage: processPARSE(<control Card>)
+  # Returns: nothing but will establish variables as defined in the ctl file
+  # -----------------------------------------------------------  
+  
+  my $currentSubroutine = 'processPARSE';
+  my $card = shift;                                            # establish the card being processed
+  
+  if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
+    if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
+    
+      # ok to process the card .....
+
+      my $fileRef;           
+      my $variable = getToken($card);                          # string to parse
+      my $lit = getToken($card);                               # should be the literal 'USING'
+      my $CTLFileName = getToken($card);                       # (CTLFILENAME) The file name holding the control information describing the file
+      if ( $CTLFileName =~ /\./ ) {                            # the file name contains a period
+        ($fileRef) = ($CTLFileName =~ /.*[\/\\](.*)\..*/);  
+      }
+      else {
+        ($fileRef) = ($CTLFileName =~ /.*[\/\\](.*)/);
+      }
+      if ( $fileRef eq '' ) { $fileRef = 'PARSERef' ; } 
+      displayDebug("File=$CTLFileName,fileRef=$fileRef",1,$currentSubroutine);
+
+      if ( uc($lit) ne 'USING' ) { # USING is missing from where it should be
+        displayError("USING literal missing. It will be assumed to be the second parameter (which will now be ignored)",$currentSubroutine);
+        displayError("Format of the )PARSE is  )PARSE <variable> [using <CTLFileName>]",$currentSubroutine);
+      }
+      
+      # set default values if necessary
+      if ( $CTLFileName eq '' ) { $CTLFileName = 'inFile.ctl' };
+      
+      # process the )PARSE statement and set parameters
+      # generate the full file name ....
+      my $skelCTLFullName = '';                            # Will contain the full CTL file name
+      
+      # load the control cards
+      if ( (uc($CTLFileName) =~ "^INLINE\:|^INLINE\=") || ( uc($CTLFileName) eq 'INLINE') ) {    # does the ctl file start with either INLINE: or INLINE= or is just the word INLINE
+        loadInlineFileCTL($fileRef);             # load the CTL file
+      }
+      else { # it is a real file
+        # generate the CTL File full name
+        my $skelCTLDir = $ENV{'SKLCTLDIR'};
+        if ( ! defined($skelCTLDir) ) { $skelCTLDir = ''; }
+        if ( $skelCTLDir eq "" ) {                          # just use the supplied names
+          $skelCTLFullName = $CTLFileName;
+        }
+        elsif ( substr($skelCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+          $skelCTLFullName = "$skelCTLDir$CTLFileName";
+        }
+        else { # no separator so add one
+          $skelCTLFullName = "$skelCTLDir$dirSep$CTLFileName";
+        }
+  
+        displayDebug("CTL file will be $skelCTLFullName",1,$currentSubroutine);
+        # now load the control file .....
+        loadFileCTL($fileRef, $skelCTLFullName);
+  
+      }
+
+      if ( defined ($ctlArray{$fileRef} ) ) {              # control file was loaded
+
+        my $tStr = "";                                       # Initialise the output line for non http output
+
+        my $numCTLLines = $#{$ctlLines[$ctlArray{$fileRef}]} + 1;     # set the number of lines in the array slice for this fileRef
+        for ( my $i=0 ; $i<$numCTLLines; $i++ ) {                     # for each control line
+  
+          displayDebug("CTL Field Array Entry being Processed: $ctlLines[$ctlArray{$fileRef}][$i]",1,$currentSubroutine);
+          my $ctlCard = $ctlLines[$ctlArray{$fileRef}][$i];           # place the card into a variable for easier typing                    
+          my $delimiter = substr($ctlCard,0,1);                       # first char is the delimiter
+    
+          # break the preparse ctl line into it's parts (maximum of 8 parts)
+          my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8);  # at this point only concerned about field name
+            
+        }
+          
+        # Split the variable and assign variables .....
+        setDefinedVariablesForFile($fileRef, $variable); 
+
+      }
+      else { # control file wasn't loaded so nothing can be done ... just skip the card
+      }
+    }
+    else { # Skipped because within a failed or empty  )DOT
+      displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+    }
+  }
+  else { # Skipped because within a failed )SEL
+    displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+  }
+
+} # end of processPARSE
+
 sub processFDOF {
   # -----------------------------------------------------------
   # Routine to print out a formatted dump of a file 
@@ -2480,11 +2990,19 @@ sub processFDOF {
     
       # ok to process the card .....
 
-      my $fileRef = 'FDOFRef';                                 # file ref for a FDOF is fixed as FDOFRef    
+      setVariable('LASTFDOFCount','0');                        # initialise variable
+      my $fileRef;                                             # file ref for a FDOF is fixed as FDOFRef    
       my $fileName = getToken($card);                          # (FILENAME) nameof the file to be opened
       my $lit = getToken($card);                               # should be the literal 'USING'
       my $CTLFileName = getToken($card);                       # (CTLFILENAME) The file name holding the control information describing the file
-
+      if ( $CTLFileName =~ /\./ ) {                            # the file name contains a period
+        ($fileRef) = ($CTLFileName =~ /.*[\/\\](.*)\..*/);  
+      }
+      else {
+        ($fileRef) = ($CTLFileName =~ /.*[\/\\](.*)/);
+      }
+      if ( $fileRef eq '' ) { $fileRef = 'FDOFRef' ; } 
+      
       if ( uc($lit) ne 'USING' ) { # USING is missing from where it should be
         displayError("USING literal missing it will be assumed to be the second parameter (which will now be ignored)",$currentSubroutine);
         displayError("Format of the )FDOF is  )FDOF [<fileName> [using <CTLFileName>]]",$currentSubroutine);
@@ -2512,22 +3030,29 @@ sub processFDOF {
         $skelDataFullName = "$skelDataDir$dirSep$fileName";
       }
 
-      # generate the CTL File full name
-      my $skelCTLDir = $ENV{'SKLCTLDIR'};
-      if ( ! defined($skelCTLDir) ) { $skelCTLDir = ''; } 
-      if ( $skelCTLDir eq "" ) {                          # just use the supplied names
-        $skelCTLFullName = $CTLFileName;
+      # load the control cards
+      if ( (uc($CTLFileName) =~ "^INLINE\:|^INLINE\=") || ( uc($CTLFileName) eq 'INLINE') ) {    # does the ctl file start with either INLINE: or INLINE= or is just the word INLINE
+        loadInlineFileCTL($fileRef);             # load the CTL file
       }
-      elsif ( substr($skelCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
-        $skelCTLFullName = "$skelCTLDir$CTLFileName";
+      else { # it is a real file
+        # generate the CTL File full name
+        my $skelCTLDir = $ENV{'SKLCTLDIR'};
+        if ( ! defined($skelCTLDir) ) { $skelCTLDir = ''; }
+        if ( $skelCTLDir eq "" ) {                          # just use the supplied names
+          $skelCTLFullName = $CTLFileName;
+        }
+        elsif ( substr($skelCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+          $skelCTLFullName = "$skelCTLDir$CTLFileName";
+        }
+        else { # no separator so add one
+          $skelCTLFullName = "$skelCTLDir$dirSep$CTLFileName";
+        }
+  
+        displayDebug("Data file will be $skelDataFullName, CTL file will be $skelCTLFullName",1,$currentSubroutine);
+        # now load the control file .....
+        loadFileCTL($fileRef, $skelCTLFullName);
+  
       }
-      else { # no separator so add one
-        $skelCTLFullName = "$skelCTLDir$dirSep$CTLFileName";
-      }
-
-      displayDebug("Data file will be $skelDataFullName, CTL file will be $skelCTLFullName",1,$currentSubroutine);
-      # now load the control file .....
-      loadFileCTL($fileRef, $skelCTLFullName);
     
       # save the current file ref
       $currentFileRef = $fileRef;
@@ -2559,7 +3084,7 @@ sub processFDOF {
             my $delimiter = substr($ctlCard,0,1);                       # first char is the delimiter
     
             # break the preparse ctl line into it's parts (maximum of 8 parts)
-            my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split ($delimiter,$ctlCard,8);  # at this point only concerned about field name
+            my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8);  # at this point only concerned about field name
             
             if ( $outputMode eq "HTTP" ) {  # output it as a html table
               outputLine("<th>" . $fldName . "</th>");
@@ -2599,6 +3124,9 @@ sub processFDOF {
           undef $skelFileHandle{$fileRef};                       # undefine the file handle to free it up
           undef $skelFileStatus{$fileRef};                       # undefine the status entry
         }
+# leave the ctl files loaded in cache in case they are reused
+#        undef $ctlLines[$ctlArray{$fileRef}];              # clear out the array holding the control cards
+#        delete $ctlArray{$fileRef};                        # clear out the control file reference number
       }
       else { # control file wasn't loaded so nothing can be done ... just skip the card
       }
@@ -2765,7 +3293,7 @@ sub processDMPHDR {
   my $currentSubroutine = 'processDMPHDR';
 
   my $card = shift;                                            # get the card information
-  my $file = trim(substr($card,$currentLinePosition));         # (SQL Statement) SQL to be used
+  my $file = trim(substituteVariables(substr($card,$currentLinePosition)));         # (SQL Statement) SQL to be used
   displayDebug("File to be downloaded to is: $file",2,$currentSubroutine);
 
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
@@ -2788,7 +3316,7 @@ sub processDMP {
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'processDMP';
-  my $num_of_fields = 0;                                       # field containgin the number of columns returned
+  my $num_of_fields = 0;                                       # field containing the number of columns returned
   my $tStr = "";                                               # this string will hold the generated output line
   my $skelTabValue = '';                                       # value of the column
 
@@ -2796,13 +3324,15 @@ sub processDMP {
   my $DBConnectionRef = getToken($card);                       # (CONNREF) this is the database ref that a )LOGON should have created
   my $SQL = trim(substr($card,$currentLinePosition));          # (SQL Statement) SQL to be used
 
-  my $TMP_File = "";                                           # temporary file name
-
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
     if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
 
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      setVariable('LASTDMPCount','0');                         # initialise variable
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^SQL\=|^FILE\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {                    # does the sql start with either INLINE: or INLINE= or is just the word INLINE
+        $SQL = loadInlineCards($currentSubroutine);             # load the SQL
       }
 
       $cursorSQL{'DMP'} = $SQL;                                # set up the SQL
@@ -2853,7 +3383,7 @@ sub processDMP {
 
               # put quotes around character fields ....
               if ( isNumeric($fieldType) ) { # probably DB2
-                if ( ($fieldType >= 2) && ($fieldType <= 8) ) { # numeric fields
+                if ( $numericFieldTypes =~ $fieldType ) { # numeric fields
                   $tStr .= $skelTabValue ;
                 }
                 else { # character field ... just normal left alignment
@@ -2924,7 +3454,7 @@ sub getTabValue {
   
   my $formattedValue = "";      # string to be returned
   
-  if ( isNumeric($fieldType) ) { # the fieldtype is numeric - DB2 returns a numeric field type
+  if ( isNumeric($fieldType) ) { # the fieldType is numeric - DB2 returns a numeric field type
     if ( ($fieldType == -1) || ($fieldType == -4) || ($fieldType == -10) ) { # long field
       if ( defined($fieldValue) ) {       # is the field defined? (if it isn't then perhaps it needs to be retrieved
         $formattedValue = $fieldValue;      # just move the data across
@@ -2939,18 +3469,35 @@ sub getTabValue {
         $formattedValue = trim($fieldValue);         # trim spaces from the front and end of the field  
         displayDebug("Column has a value of $formattedValue [char, vchar or wchar field]\n",2,$currentSubroutine);
       }
-      else { # no need to trim - not a varchar
-        if ( $truncateTrailingZeroes && ($fieldValue =~ /\./) ) { # if there are trailing zeroes then remove them (but only if there is a decimal point)
-          displayDebug("Before: $fieldValue<\n",2,$currentSubroutine);
-          $fieldValue =~ s/0*$//g;  
-          displayDebug("After: $fieldValue<\n",2,$currentSubroutine);
+      else { # no need to trim - not a varchar, check for trunc or decimal places
+        if ( ' 3 ' =~ / $fieldType / ) { # it is decimal so do truncating
+          if ( $truncateTrailingZeroes && ($fieldValue =~ /\./) ) { # if there are trailing zeroes then remove them (but only if there is a decimal point)
+            displayDebug("Before Tr: $fieldValue<\n",2,$currentSubroutine);
+            $fieldValue =~ s/0*$//g;  
+            if ( $fieldValue =~ /\.$/ ) { # last char is a period
+              ($fieldValue) = ($fieldValue =~ /(.*)\.$/);   # drop the last character
+            }
+            displayDebug("After  Tr: $fieldValue<\n",2,$currentSubroutine);
+          }
+          if ( $cursorDecimalPlaces != -1 ) { # decimal places has been set
+            if ( $fieldValue =~ /\./ ) { # it is not an integer value
+              displayDebug("Before DP: $fieldValue<\n",2,$currentSubroutine);
+              $fieldValue = sprintf("%." . $cursorDecimalPlaces . "f", $fieldValue);
+              displayDebug("After  DP: $fieldValue<\n",2,$currentSubroutine);
+            }
+          }
         }
-        $formattedValue = $fieldValue;
+        if ( $skelDebugLevel > 0 ) { 
+          $formattedValue = "($fieldType) $fieldValue";
+        }
+        else {
+          $formattedValue = $fieldValue;
+        }
         displayDebug("Column has a value of $formattedValue [not char]\n",2,$currentSubroutine);
       }
     }
   }
-  else { # fieldType is not numeric 
+  else { # fieldType is not numeric  (put in for DBMS's that supply character strings - i.e. SQLITE)
     if ( ! defined($fieldValue) ) { return 'NULL' ; } # if the field isn't defined then set it's value to NULL
     
     if ( $fieldType eq "TEXT" ) {         # character field
@@ -2960,6 +3507,11 @@ sub getTabValue {
     else { # no need to trim - not a varchar
       if ( $truncateTrailingZeroes  && ($fieldValue =~ /\./) ) { # if there are trailing zeroes then remove them (but only if there is a decimal point)
         $fieldValue =~ s/0*$//g;  
+      }
+      if ( ($cursorDecimalPlaces != -1) && ($fieldValue =~ /\./) ) { # decimal places has been set
+        displayDebug("Before: $fieldValue<\n",2,$currentSubroutine);
+        $fieldValue = sprintf("%." . $cursorDecimalPlaces . "f", $fieldValue);
+        displayDebug("After: $fieldValue<\n",2,$currentSubroutine);
       }
       $formattedValue = $fieldValue;
       displayDebug("Column has a value of $formattedValue [not TEXT]\n",2,$currentSubroutine);
@@ -3078,10 +3630,14 @@ sub processGRAPH {
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
     if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
       
+      setVariable('LASTGRAPHCount','0');                       # initialise variable
       # process the supplied SQL
   
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or FILE= or SQL=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
+        $SQL = loadInlineCards($currentSubroutine);             # load the SQL
       }
       
       # all the parameters have now been processed
@@ -3092,8 +3648,8 @@ sub processGRAPH {
         
         my $firstLine = 1;
 
-        if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
-          displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )GRAPH will be ignored",$currentSubroutine);
+        if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+          displayError("A previous )LOGON statement has not created a connection for $DBConnectionRef\nThis )GRAPH will be ignored",$currentSubroutine);
         }
         else {
           # now process the open
@@ -3480,7 +4036,7 @@ sub processCTAB {
   # -----------------------------------------------------------  
   
   my $currentSubroutine = 'processCTAB';
-  my $num_of_fields = 0;                                       # field containgin the number of columns returned
+  my $num_of_fields = 0;                                       # field containing the number of columns returned
   my $tStr = "";                                               # this string will hold the generated output line
   my $skelTabValue = '';                                       # value of the column
 
@@ -3488,7 +4044,6 @@ sub processCTAB {
   my $DBConnectionRef = getToken($card);                       # (CONNREF) this is the database ref that a )LOGON should have created
   my $SQL = trim(substr($card,$currentLinePosition));          # (SQL Statement) SQL to be used
   
-  my $TMP_File = "";                                           # temporary file name
   my $parms  = '';                                             # parms being passed to control what is generated
   my $buttonName = '';                                         # button name if supplied
   my $newSQL = ''; 
@@ -3503,6 +4058,7 @@ sub processCTAB {
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
     if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
             
+      setVariable('LASTCTABCount','0' );                       # initialise variable
       if ( substr($SQL,0,1) eq '(' ) {
         ($parms, $newSQL) = ($SQL =~ /\((.*?)\)(.*)/);
         $SQL = trim($newSQL);
@@ -3533,8 +4089,11 @@ sub processCTAB {
         displayDebug("Extracted button name is: $buttonName, form is: $form, SQL is: $SQL",1,$currentSubroutine);
       }
             
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                         # does the sql start with either SQL: or FILE: or SQL= or FILE=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+        $SQL = loadInlineCards($currentSubroutine);             # load the SQL
       }
 
       if ( ! $checkAllWritten ) { # if we haven';t written out the check all javascript function then do it now
@@ -3562,8 +4121,8 @@ sub processCTAB {
       
         $cursorSQL{'CTAB'} = $SQL;                               # set up the SQL
 
-        if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
-          displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )CTAB will be ignored",$currentSubroutine);
+        if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+          displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )CTAB will be ignored",$currentSubroutine);
         }
         else {
           # now process the open
@@ -3659,7 +4218,7 @@ sub processCTAB {
                   $skelTabValue = getTabValue($fieldType, ${$skelCursorRow{'CTAB'}}[$i], 'CTAB',  $i);   # pass field type and the field across
   
                   if ( isNumeric($fieldType) ) { # field type is a numeric (DB2 field types are numeric)
-                    if ( ($fieldType >= 2) && ($fieldType <= 8) ) { # right align numeric fields
+                    if ( $numericFieldTypes =~ $fieldType ) { # right align numeric fields
                       $tStr .= "<td align=\"right\">" . $skelTabValue . "</td> ";
                     }
                     else { # character field ... just normal left alignment
@@ -3794,14 +4353,13 @@ sub processSBOX {
   my $card = shift;                                            # get the card information
 
   my $currentSubroutine = 'processSBOX';
-  my $num_of_fields = 0;                                       # filed containgin the number of columns returned
+  my $num_of_fields = 0;                                       # field containing the number of columns returned
   my $tStr = "";                                               # this string will hold the generated output line
   my $skelTabValue = '';                                       # value of the column
 
   my $DBConnectionRef = getToken($card);                       # (CONNREF) this is the database ref that a )LOGON should have created
   my $SQL = trim(substr($card,$currentLinePosition));          # (SQL Statement) SQL to be used
   
-  my $TMP_File = "";                                           # temporary file name
   my $parms  = '';                                             # parms being passed to control what is generated
   my $ID  = 'A';                                               # ID name to use for the checkboxes
   my $buttonName = '';                                         # button name if supplied
@@ -3814,6 +4372,7 @@ sub processSBOX {
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
     if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
       
+      setVariable('LASTSBOXCount', '0');                       # initialise variable
       if ( substr($SQL,0,1) eq '(' ) {
         ($parms, $newSQL) = ($SQL =~ /\((.*?)\)(.*)/);
         $SQL = trim($newSQL);
@@ -3830,16 +4389,19 @@ sub processSBOX {
         displayDebug("Extracted ID is: $ID, button name is: $buttonName, form is: $formName, SQL is: $SQL",1,$currentSubroutine);
       }
 
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+        $SQL = loadInlineCards($currentSubroutine);             # load the SQL
       }
 
       if ( trim($SQL) ne '' ) { # if some SQL was supplied then ......
       
         $cursorSQL{'SBOX'} = $SQL;                               # set up the SQL
 
-        if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
-          displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )SBOX will be ignored",$currentSubroutine);
+        if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+          displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )SBOX will be ignored",$currentSubroutine);
         }
         else {
           # now process the open
@@ -4053,7 +4615,7 @@ sub processFTAB {
   # -----------------------------------------------------------  
   
   my $currentSubroutine = 'processFTAB';
-  my $num_of_fields = 0;                                       # filed containgin the number of columns returned
+  my $num_of_fields = 0;                                       # field containing the number of columns returned
   my $tStr = "";                                               # this string will hold the generated output line
   my $skelTabValue = '';                                       # value of the column
 
@@ -4061,19 +4623,23 @@ sub processFTAB {
   my $DBConnectionRef = getToken($card);                       # (CONNREF) this is the database ref that a )LOGON should have created
   my $SQL = trim(substr($card,$currentLinePosition));          # (SQL Statement) SQL to be used
   
-  my $TMP_File = "";                                           # temporary file name
-  
+  my $FTAB_output_len = 0;                                     # note that the count needs to be kept in the routine as it is only for FTAB generated output
+
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
     if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
       
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      setVariable('LASTFTABCount','0');                            # Initialise the count in case of failure
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                         # does the sql start with either SQL: or FILE: or SQL= or FILE=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+        $SQL = loadInlineCards($currentSubroutine);                                # load the SQL
       }
       
       $cursorSQL{'FTAB'} = $SQL;                               # set up the SQL
 
-      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
-        displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )FTAB will be ignored",$currentSubroutine);
+      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+        displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )FTAB will be ignored",$currentSubroutine);
       }
       else {
         # now process the open
@@ -4094,8 +4660,10 @@ sub processFTAB {
               outputLine("<table border=\"1\"><tr>\n");
               for ( my $i=0; $i<$num_of_fields; $i++ ) {
                 outputLine("<th>" . $skelCursor{'FTAB'}->{NAME}->[$i] . "</th>");
+                $FTAB_output_len += length("<th>" . $skelCursor{'FTAB'}->{NAME}->[$i] . "</th>");
               } 
               outputLine("</tr>\n");
+              $FTAB_output_len += length("</tr>\n");
             }
             else { # just write it out to normal output
               outputLine("\n");
@@ -4116,6 +4684,7 @@ sub processFTAB {
               $tStr = "";                                       # Initialise the output line 
               if ( $outputMode eq "HTTP" ) {                          # output it as a html table
                 $tStr = "<tr>";                                 # set new table row tag
+                $FTAB_output_len += length("<tr>");
               }
               for ( my $i=0; $i<$num_of_fields; $i++ ) {
                 my $fieldType = $skelCursor{'FTAB'}->{TYPE}->[$i]; # $fieldType is now the field type (CHAR, VARCHAR etc)
@@ -4132,7 +4701,7 @@ sub processFTAB {
   
                 if ( $outputMode eq "HTTP" ) {                          # output it as a html table cell
                   if ( isNumeric($fieldType) ) { # field type is a numeric (DB2 field types are numeric)
-                    if ( ($fieldType >= 2) && ($fieldType <= 8) ) { # right align numeric fields
+                    if ( $numericFieldTypes =~ $fieldType ) { # right align numeric fields
                       $tStr .= "<td align=\"right\">" . $skelTabValue . "</td> ";
                     }
                     else { # character field ... just normal left alignment
@@ -4154,11 +4723,22 @@ sub processFTAB {
               }
               if ( $outputMode eq "HTTP" ) {  # output it as a html table
                 outputLine("$tStr</tr>\n");
+                $FTAB_output_len += length("$tStr</tr>\n");
               }
               else {
                 outputLine("$tStr");
               }
-            
+
+              if ( $FTAB_output_len > $skelMaxTableOut ) { # check to see if we have broken the output limit for tables
+                outputLine("<BR><BR><b>Not All data returned</b> - Table output limited to $skelMaxTableOut characters<BR><BR>\n");
+                last; # finish the data collection
+              }
+
+              if ( $cursorRowNumber{'FTAB'} >= $skelMaxRows ) { 
+                outputLine("<BR><BR><b>Not All data returned</b> - Table output limited to $skelMaxRows rows<BR><BR>\n");
+                last; # finish the data collection
+              }
+
               # move on to the next row now .....
             
               $moreToProcess = getNextRecord('FTAB'); # 1 is returned if more data to process, 0 if at end of cursor
@@ -4236,7 +4816,6 @@ sub processFXTAB {
   my $MRKEntry = 'X';
   my $MRKEmpty = ' ';
   
-  my $TMP_File = "";                                           # temporary file name
   my %colData = ();                                            # initialise the array to hold the table data
   my %colDataCount = ();                                       # array to old the count of the number of entries
   my %revColData = ();                                         # initialise the reverse array
@@ -4244,6 +4823,7 @@ sub processFXTAB {
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
     if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
       
+      setVariable('LASTFXTABCount','0');                       # initialise variable
       # check to see if an action type has been set .....
       
       my @typeCheck = split(" ",$SQL);
@@ -4266,14 +4846,17 @@ sub processFXTAB {
       
       # load up the SQL if it is in a file
       
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+        $SQL = loadInlineCards($currentSubroutine);                                # load the SQL
       }
       
       $cursorSQL{'FXTAB'} = $SQL;                               # set up the SQL
 
-      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
-        displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )FTAB will be ignored",$currentSubroutine);
+      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+        displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )FXTAB will be ignored",$currentSubroutine);
       }
       else {
         # now process the open
@@ -4479,7 +5062,6 @@ sub processDOCMD {
   my $DBConnectionRef = getToken($card);                       # (CONNREF) this is the database ref that a )LOGON should have created
   my $SQL = trim(substr($card,$currentLinePosition));          # (SQL Statement) SQL to be used
   
-  my $TMP_File = "";                                           # temporary file name
   my $actionType = '';
   
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
@@ -4487,8 +5069,11 @@ sub processDOCMD {
     
       setVariable('rowsAffected',0);                           # reset the internal variable
       
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+        $SQL = loadInlineCards($currentSubroutine);             # load the SQL
       }
       
       # check to see if an action type has been set .....
@@ -4504,9 +5089,9 @@ sub processDOCMD {
       
       $cursorSQL{'DOCMD'} = $SQL;                               # set up the SQL
 
-      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
+      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
         my $tmpLine = $currentSkelLine +1;
-        displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )DOCMD will be ignored",$currentSubroutine);
+        displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )DOCMD will be ignored",$currentSubroutine);
       }
       else {
         # now process the open
@@ -4547,7 +5132,7 @@ sub processFVTAB {
   # -----------------------------------------------------------  
   
   my $currentSubroutine = 'processFVTAB';
-  my $num_of_fields = 0;                                       # filed containgin the number of columns returned
+  my $num_of_fields = 0;                                       # field containing the number of columns returned
   my $tStr = "";                                               # this string will hold the generated output line
   my $skelTabValue = '';                                       # value of the column
 
@@ -4555,19 +5140,21 @@ sub processFVTAB {
   my $DBConnectionRef = getToken($card);                       # (CONNREF) this is the database ref that a )LOGON should have created
   my $SQL = trim(substr($card,$currentLinePosition));          # (SQL Statement) SQL to be used
   
-  my $TMP_File = "";                                           # temporary file name
-  
   if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
     if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
       
-      if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+      setVariable('LASTFVTABCount','0');                       # initialise variable
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
         $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+        $SQL = loadInlineCards($currentSubroutine);             # load the SQL
       }
       
       $cursorSQL{'FVTAB'} = $SQL;                               # set up the SQL
 
-      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
-        displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )FTAB will be ignored",$currentSubroutine);
+      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+        displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )FTAB will be ignored",$currentSubroutine);
       }
       else {
         # now process the open
@@ -4647,6 +5234,450 @@ sub processFVTAB {
   }
 } # end of processFVTAB
 
+sub processDOSEL {
+  # -----------------------------------------------------------
+  # Routine to populateinternal variables with values from a SQL statement
+  #
+  # The DOSEL control statement looks like )DOSEL <DB Ref> <Var Qualifier> <SQL Statement>
+  #
+  # Usage: processDOSEL(<control Card>)
+  # Returns: nothing but will update various internal variables as 
+  #          indicated by the SQL being executed
+  # -----------------------------------------------------------  
+  
+  my $currentSubroutine = 'processDOSEL';
+  my $num_of_fields = 0;                                       # field containing the number of columns returned
+  my $skelTabValue = '';                                       # value of the column
+
+  my $card = shift;                                            # get the card information
+  my $DBConnectionRef = getToken($card);                       # (CONNREF) this is the database ref that a )LOGON should have created
+  my $varQualifier = getToken($card);                          # (VARQUAL) this value will be prefixed to the returned column names (if NONE specified then 
+                                                               # variable name wont be qualified
+  my $SQL = trim(substr($card,$currentLinePosition));          # (SQL Statement) SQL to be used
+  
+  if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
+    if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
+      
+      if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
+        $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+      }
+      elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+        $SQL = loadInlineCards($currentSubroutine);             # load the SQL
+      }
+
+      $cursorSQL{'DOSEL'} = $SQL;                               # set up the SQL
+
+      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+        displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )DOSEL will be ignored",$currentSubroutine);
+      }
+      else {
+        # now process the open
+        if ( establishCursor( $DBConnectionRef, 'DOSEL' ) ) {     # returns 1 if all is ok (and attempts to read the first row)
+        
+          if ( $cursorRowNumber{'DOSEL'} == 0 ) {                 # no rows returned (should be 1 at this point)
+            displayDebug("Call to SQL returned 0 rows",2,$currentSubroutine);
+            outputLine("No Data Returned"); 
+          }
+          else { # a row was returned
+            displayDebug("Rows returned",2,$currentSubroutine);
+            $num_of_fields = $skelCursor{'DOSEL'}->{NUM_OF_FIELDS};   # establish the number of columns returned
+            displayDebug("Number of fields = $num_of_fields\n",2,$currentSubroutine);
+            
+            if ( uc($varQualifier) eq 'NONE' ) { $varQualifier = ''; } # if NONE is specified then dont qualifier the variable names
+            else { $varQualifier .= '_'; }                            # construct the qualifier
+          
+            # write out the data .....
+          
+            displayDebug("Reading from Cursor",2,$currentSubroutine);
+            for ( my $i=0; $i<$num_of_fields; $i++ ) { # loop through the columns returned
+              my $fieldType = $skelCursor{'DOSEL'}->{TYPE}->[$i]; # $fieldType is now the field type (CHAR, VARCHAR etc)
+              displayDebug("Field number $i ($skelCursor{'DOSEL'}->{NAME}->[$i]) has a field type of $fieldType",2,$currentSubroutine);
+              $skelTabValue = "";
+              $skelTabValue = getTabValue($fieldType, ${$skelCursorRow{'DOSEL'}}[$i], 'FVTAB',  $i);   # pass field type and the field across
+              
+              displayDebug("Assigning variable $varQualifier$skelCursor{'DOSEL'}->{NAME}->[$i] the value of $skelTabValue",2,$currentSubroutine);
+              setVariable("$varQualifier$skelCursor{'DOSEL'}->{NAME}->[$i]", $skelTabValue);
+  
+            } # end of for loop processing columns
+            
+            # only read the first row - discard all other data  
+            
+            closeCursor('DOSEL');                # close the FVTAB cursor
+          }
+        }
+        else { # Problems in river city - open cursor failed
+          if ( $skelVerboseSQLErrors eq 'Yes' ) {
+            if ( $SQLError ) { # SQL Error (not just no rows found)
+              displayError("Call to SQL failed - will pretend no records found\nSQL in error: $SQL",$currentSubroutine);
+            }
+            else {
+              displayError("No Rows Found for SQL:\n $SQL",$currentSubroutine);
+            }
+          }
+          else { # not verbose - dont mention it if no rows found and if SQL error dont print SQL
+            if ( $SQLError ) { # SQL Error (not just no rows found)
+              displayError("Call to SQL failed - will pretend no records found\n",$currentSubroutine);
+            }
+          }
+        }
+        displayDebug("Processed: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+      }
+    }
+    else { # Skipped because within a failed or empty  )DOT
+      displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+    }
+  }
+  else { # Skipped because within a failed )SEL
+    displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+  }
+} # end of processDOSEL
+
+sub processCHECKFORROW {
+  # -----------------------------------------------------------
+  # Routine to check if the supplied SQL will return a row
+  #
+  # Usage: processCHECKFORROW(<control Card>)
+  # Returns: 1 if rows found and 0 for no rows or error
+  # -----------------------------------------------------------  
+  
+  my $currentSubroutine = 'processCHECKFORROWS';
+  my $skelTabValue = '';                                       # value of the column
+
+  my $DBConnectionRef = shift;                                 # (CONNREF) this is the database ref that a )LOGON should have created
+  my $SQL = shift;                                             # (SQL Statement) SQL to be used
+  
+  if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
+    $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+  }
+  elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+    $SQL = loadInlineCards($currentSubroutine);             # load the SQL
+  }
+      
+  $cursorSQL{'CHECKFORROWS'} = $SQL;                               # set up the SQL
+
+  if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+  foreach my $tmpX (keys %skelConnection ) { print STDERR "Connection for $tmpX exists\n"; }
+    displayError("A previous )LOGON statement has not created a database connection for '$DBConnectionRef'\nThis test will return 0",$currentSubroutine);
+  }
+  else {
+    # now process the open
+    if ( establishCursor( $DBConnectionRef, 'CHECKFORROWS' ) ) {     # returns 1 if all is ok (and attempts to read the first row)
+        
+      if ( $cursorRowNumber{'CHECKFORROWS'} == 0 ) {                 # no rows returned (should be 1 at this point)
+        displayDebug("Call to SQL returned 0 rows",2,$currentSubroutine);
+      }
+      else { # a row was returned
+        displayDebug("Rows returned",2,$currentSubroutine);
+        return 1;
+      }
+      closeCursor('CHECKFORROWS');
+    }
+  }
+  return 0;
+} # end of processCHECKFORROW
+
+sub processRESETOUTPUT { 
+  # -----------------------------------------------------------
+  # Routine to process the )RESETOUTPUT card
+  # a )RESETOUTPUT card clears any saved output
+  #
+  # Usage: processRESETOUTPUT(<message>)
+  # Returns: modifies the current saved output
+  # -----------------------------------------------------------
+
+  my $message = shift;             # will hold card type (not the full input card)
+  my $currentSubroutine = 'processRESETOUTPUT';
+  my $tempLine = '';
+
+  if ( ( $skelSelSkipCards eq "No" ) ) { # not excluded because of a failed )SEL
+    if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
+    
+      # sort out any message ....
+      if ( defined($message) && ( trim($message) ne '' ) ) { # something has been put on the )RESETOUTPUT Card
+        $skelReturnString = $message;
+      }
+      else {  # nothing on the card so just get rid of the output
+        $skelReturnString = '';
+      }
+    }  
+  }
+    
+} # end of processRESETOUTPUT
+
+sub processSTOP { 
+  # -----------------------------------------------------------
+  # Routine to process the )STOP card
+  # a )STOP card terminates the skeleton now
+  #
+  # Usage: processSTOP(<control card>)
+  # Returns: modifies the current card pointer in the skeleton
+  # -----------------------------------------------------------
+
+  my $card = shift;             # will hold card type (not the full input card)
+  my $currentSubroutine = 'processSTOP';
+  my $tempLine = '';
+
+  if ( ( $skelSelSkipCards eq "No" ) ) { # not excluded because of a failed )SEL
+    if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
+    
+      my @cardParts = split(" ", $card,2);
+      
+      # sort out any message ....
+      if ( defined($cardParts[1]) && ( trim($cardParts[1]) ne '' ) ) { # something has been put on the )STOP Card
+        if ( substr($cardParts[1],0,1) ne '+' ) { # if the string doesn't start with a plus then clear all output
+          $skelReturnString = '';
+        }
+        else {
+          $cardParts[1] = substr($cardParts[1],1);    # lose the first character
+        }
+        
+        $tempLine = substituteVariables($cardParts[1]); 
+        displayDebug("Adding the )STOP comment to the output >$tempLine<",1,$currentSubroutine);
+        outputLine($tempLine);
+      }
+  
+      # check to see if we are in an imbed
+      if ( $#imbedStack > -1 ) { # stuff on the stack to process
+        while ( $#imbedStack > -1 ) { # more imbeds to discard
+          $currentSkelLine = pop(@imbedStack);   # holds the position in the skel of the imbed statement
+          $currentActiveSkel = pop(@imbedStack); # holds the name of the new active skeleton
+          displayDebug("Values pulled from imbedStack: \$currentSkelLine = $currentSkelLine, \$currentActiveSkel = $currentActiveSkel",1,$currentSubroutine);
+          displayDebug(")STOP Continuing to process skeleton $currentActiveSkel",1,$currentSubroutine);
+        }
+        setVariable('currentSkeleton',$currentActiveSkel);         # set the currentSkeleton variable
+      }
+      # at this point the imbed stack is empty and currentActiveSkel should point to the initial skeleton
+      $currentSkelLine = $#{$skelLines[$skelArray{$currentActiveSkel}]};     # set the current line to the last line of the skel 
+      displayDebug("CurrentSkelLine set to $currentSkelLine",1,$currentSubroutine);
+      $skelSELCount = 0;
+      $skelDOTCount = 0;
+    }
+  }
+    
+} # end of processSTOP
+
+sub processEXIT { 
+  # -----------------------------------------------------------
+  # Routine to process the )EXIT card
+  # a )EXIT card terminates the current skeleton or IMBED (but only goes back 1 level)
+  #
+  # Usage: processEXIT(<control card>)
+  # Returns: modifies the current card pointer in the skeleton
+  # -----------------------------------------------------------
+
+  my $card = shift;             # will hold card type (not the full input card)
+  my $currentSubroutine = 'processEXIT';
+  my $UC_cardType; 
+  my @cardParts = ();
+
+  if ( ( $skelSelSkipCards eq "No" ) ) { # not excluded because of a failed )SEL
+    if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
+
+      # skip to the end of the skeleton adjusting counts as necessary  
+      my $skelLine = $currentSkelLine++;    # point to the next line in the skeleton
+      while ( defined($skelLines[$skelArray{$currentActiveSkel}][$skelLine]) ) { # while there are still lines in the array
+        @cardParts = split(" ", $skelLines[$skelArray{$currentActiveSkel}][$skelLine]); # break the card into pieces
+        $UC_cardType = 'NONESET';
+        if ( defined($cardParts[0]) ) { 
+          $UC_cardType = uc(trim($cardParts[0]));
+        }
+        if ( $UC_cardType eq ')ENDDOF' ) { # check to see if it the matching one
+          $skelDOFCount--;            # adjust the DOF count
+        }
+        elsif ( $UC_cardType eq ')ENDDOT' ) { # check to see if it the matching one
+          $skelDOTCount--;            # adjust the DOT count
+        }
+        elsif ( $UC_cardType eq ')ENDDOEXEC' ) { # check to see if it the matching one
+          $skelDOEXECCount--;            # adjust the DOEXEC count
+        }
+        elsif ( $UC_cardType eq ')SEL' ) { # adjust the SEL count
+          $skelSELCount++;
+        }
+        elsif ( $UC_cardType eq ')ENDSEL' ) { # adjust the SEL count
+          $skelSELCount--;
+        }
+        elsif ( ($UC_cardType eq ')DOT') || ($UC_cardType eq ')XDOT') ) { # adjust the DOT count
+          $skelDOTCount++;
+        }
+        elsif ( $UC_cardType eq ')DOF') { # adjust the DOF count
+          $skelDOFCount++;
+        }
+        elsif ( $UC_cardType eq ')DOEXEC' ) { # adjust the DOEXEC count
+          $skelDOEXECCount++;
+        }
+        $skelLine++;
+      }
+  
+      # at the last line of the current skel - check to see if we are in an imbed
+      if ( $#imbedStack > -1 ) { # stuff on the stack to process
+        $currentSkelLine = pop(@imbedStack);   # holds the position in the skel of the imbed statement
+        $currentSkelLine++;                    # move to line after )IMBED
+        $currentActiveSkel = pop(@imbedStack); # holds the name of the new active skeleton
+        displayDebug("Values pulled from imbedStack: \$currentSkelLine = $currentSkelLine, \$currentActiveSkel = $currentActiveSkel",1,$currentSubroutine);
+        displayDebug(")EXIT Continuing to process skeleton $currentActiveSkel from line $currentSkelLine",1,$currentSubroutine);
+        setVariable('currentSkeleton',$currentActiveSkel);         # set the currentSkeleton variable
+      }
+      else { # not an imbed so treat like )STOP
+        # at this point the imbed stack will beempty and currentActiveSkel should point to the initial skeleton
+        $currentSkelLine = $#{$skelLines[$skelArray{$currentActiveSkel}]};        # set to last line of skel
+        displayDebug("CurrentSkelLine set to $currentSkelLine",1,$currentSubroutine);
+      }
+    }
+  }
+  
+} # end of processEXIT
+
+sub processFILE { 
+  # -----------------------------------------------------------
+  # Routine to process the )FILE card
+  # a  )FILE card retrieves information about a file
+  #
+  # Usage: processFILE(<control card>)
+  # Returns: nothign but sets a number of internal variables
+  # -----------------------------------------------------------
+
+  my $card = shift;             # will hold card type (not the full input card)
+  my $currentSubroutine = 'processFILE';
+
+  if ( ( $skelSelSkipCards eq "No" ) ) { # not excluded because of a failed )SEL
+    if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
+    
+      my $filename = getToken($card);       
+      getFileInformation($filename, 'FILE');
+    
+    }
+  }
+  
+} # end of processFILE
+
+sub processLAST { 
+  # -----------------------------------------------------------
+  # Routine to process the )LAST or)LEAVE card
+  # a )LEAVE card takes no parameters and will just skip to the next end loop card (ENDDOT, ENDDOF or ENDDOEXEC card
+  #
+  # Usage: processLAST(<control card>)
+  # Returns: modifies the current card pointer in the skeleton
+  # -----------------------------------------------------------
+
+  my $card = shift;             # will hold card type (not the full input card)
+  my $searchEnd = ' ';          # this contains the list of termination strings
+  my $currentSubroutine = 'processLAST';
+
+  my $lastValue = 1;
+  if ( $card eq ')NEXT' ) { $lastValue = 0; }    # if it is next then dont exit the loop just jump to next iteration
+
+  if ( ( $skelSelSkipCards eq "No" ) ) { # not excluded because of a failed )SEL
+    if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
+      # all ok to be processed
+      if ( defined ( $currentFileRef ) && ( $currentFileRef ne '' ) ) { # within an active )DOF
+        $searchEnd .= ')ENDDOF ';
+      }
+      if ( defined ( $currentExecRef ) && ( $currentExecRef ne '' ) ) { # within an active )DOEXEC
+        $searchEnd .= ')ENDDOEXEC ';
+      }
+      if ( defined ( $currentCursorConnection ) ) { # within an active )DOT
+        $searchEnd .= ')ENDDOT ';
+      }
+      
+      if ( $searchEnd eq ' ') { # not in any loop so just ignore the )LAST
+        displayError("This $card card exists outside of a )DOF, )DOT, )XDOT or )DOEXEC loop.\nThis $card will be ignored",$currentSubroutine);
+      }
+      else {
+        # remember the current state
+        my $C_DoExecCount = $skelDOEXECCount;
+        my $C_DOFCount = $skelDOFCount;
+        my $C_DOTCount = $skelDOTCount;
+        my $C_SelCount = $skelSELCount;
+        # find the next termination card .....
+        my $skelLine = $currentSkelLine++;   # start at the next card
+        my @cardParts;
+        my $UC_cardType;
+        my $UC_cardType_srch;
+    
+        while ( defined($skelLines[$skelArray{$currentActiveSkel}][$skelLine]) ) { # while there are still lines in the array
+          @cardParts = split(" ", $skelLines[$skelArray{$currentActiveSkel}][$skelLine]); # break the card into pieces
+          $UC_cardType = 'NONESET';
+          $UC_cardType_srch = 'NONESET';
+          if ( defined($cardParts[0]) ) { 
+            $UC_cardType = uc(trim($cardParts[0]));
+            $UC_cardType_srch = $UC_cardType;
+            $UC_cardType_srch =~ s/\)/\\\)/; # escape out the leading )
+          }
+          if ( "$searchEnd" =~ "$UC_cardType_srch" ) { # found a terminating card
+            # create a condition to look like the end of the loop
+            # print "skelDOFCount=$skelDOFCount, C_DOFCount=$C_DOFCount, UC_cardType=$UC_cardType<\n"; 
+            if ( $UC_cardType eq ')ENDDOF' ) { # check to see if it the matching one
+              if ( $skelDOFCount == $C_DOFCount ) { # is the matching )ENDDOF so set things up and skip to that card
+                $lastFlagSet = $lastValue;             # set the value based on $card
+                $currentSkelLine = $skelLine - 1;      # reset the current Line to the card before the terminating card
+                # print "CurrentSkelLine changed to $currentSkelLine - $skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]\n";
+                last;
+              }
+              else { # ignore the )END card as it isn't the right one
+                $skelDOFCount--;            # adjust the DOF count
+              }
+            }
+            elsif ( $UC_cardType eq ')ENDDOT' ) { # check to see if it the matching one
+              if ( $skelDOTCount == $C_DOTCount ) { # is the matching )ENDDOT so set things up and skip to that card
+                $lastFlagSet = $lastValue;             # set the value based on $card
+                $currentSkelLine = $skelLine - 1;      # reset the current Line to the card before the terminating card
+                last;
+              }
+              else { # ignore the )END card as it isn't the right one
+                $skelDOTCount--;            # adjust the DOT count
+              }
+            }
+            else { # check to see if it the matching )ENDDOEXEC
+              if ( $skelDOEXECCount == $C_DoExecCount ) { # is the matching )ENDDOEXEC so set things up and skip to that card
+                $lastFlagSet = $lastValue;             # set the value based on $card
+                $currentSkelLine = $skelLine - 1;      # reset the current Line to the card before the terminating card
+                last;
+              }
+              else { # ignore the )END card as it isn't the right one
+                $skelDOEXECCount--;            # adjust the DOEXEC count
+              }
+            }
+          } 
+          elsif ( $UC_cardType eq ')SEL' ) { # adjust the SEL count
+            $skelSELCount++;
+          }
+          elsif ( $UC_cardType eq ')ENDSEL' ) { # adjust the SEL count
+            if ( $skelSELCount == $C_SelCount ) { # we have reached the)ENDSEL of a )SEL that we are currently in so we need to pop stuff off of the stack
+              $skelSELCount--;
+              verifyControlCounts();
+            }
+            else { # otherwise just keep the count going down
+              $skelSELCount--;
+            }
+          }
+          elsif ( ($UC_cardType eq ')DOT') || ($UC_cardType eq ')XDOT') ) { # adjust the DOT count
+            $skelDOTCount++;
+          }
+          elsif ( $UC_cardType eq ')ENDDOT' ) { # adjust the DOT count
+            $skelDOTCount--;
+          }
+          elsif ( $UC_cardType eq ')DOF') { # adjust the DOF count
+            $skelDOFCount++;
+          }
+          elsif ( $UC_cardType eq ')ENDDOF' ) { # adjust the DOF count
+            $skelDOFCount--;
+          }
+          elsif ( $UC_cardType eq ')DOEXEC' ) { # adjust the DOEXEC count
+            $skelDOEXECCount++;
+          }
+          elsif ( $UC_cardType eq ')ENDDOEXEC' ) { # adjust the DOEXEC count
+            $skelDOEXECCount--;
+          }
+          $skelLine++;
+        } # end of the while loop looking for an end loop card
+        if ( ! defined($skelLines[$skelArray{$currentActiveSkel}][$skelLine]) ) { # at the end of the skeleton and no end in sight
+          displayDebug("Have not found a $searchEnd card following this $card card.\nThis $card will be ignored",1,$currentSubroutine);
+        }
+      }
+    }
+  }
+} # end of processLAST
+
 sub processDOT { 
   # -----------------------------------------------------------
   # Routine to process the )DOT card
@@ -4686,8 +5717,11 @@ sub processDOT {
   # read in data if it is held in a file
 
   if ( $where ne '' ) {                        # only bother if there is a where clause
-    if ( uc($where) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+    if ( uc($where) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
       $where = loadSQL(trim(substr($where,$+[0])) , $currentSubroutine);             # load the SQL
+    }
+    elsif ( (uc($where) =~ "^INLINE\:|^INLINE\=") || ( uc($where) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+      $where = loadInlineCards($currentSubroutine);             # load the SQL
     }
   }
 
@@ -4721,20 +5755,32 @@ sub processXDOT {
   my $card = shift;                                        # get the card information
   my $DBConnectionRef = getToken($card);                   # (CONNREF) this is the database ref that a )LOGON should have created
   my $cursorRef = getToken($card);                         # (TABREF) this is the key through which all cursor parts will be collected
-  my $SQL = trim(substr($card,$currentLinePosition));      # (SQL Statement) SQL to be used
-  
-  # read in data if it is held in a file
-
-  if ( uc($SQL) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
-    $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+  if ( $currentLinePosition > length($card) ) { # something has gone wrong ....
+    displayError(")XDOT doesn't have enough parameters )XDOT will be ignored",$currentSubroutine);
+    $skelDOTSkipCards = "Yes";              # skip cards till we get to a )ENDDOT at the same level
+    my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
+    $skelDOTCount++;
+    $skelDOT_resumeLevel = $skelDOTCount - 1;   # level at which processing will be resumed (will be tested for each )ENDDOT encountered)
   }
+  else {
+    my $SQL = trim(substr($card,$currentLinePosition));      # (SQL Statement) SQL to be used
+  
+    # read in data if it is held in a file
 
-  # Construct the SQL to use
+    if ( uc($SQL) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
+      $SQL = loadSQL(trim(substr($SQL,$+[0])) , $currentSubroutine);             # load the SQL
+    }
+    elsif ( (uc($SQL) =~ "^INLINE\:|^INLINE\=") || ( uc($SQL) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+      $SQL = loadInlineCards($currentSubroutine);             # load the SQL
+    }
+
+    # Construct the SQL to use
   
-  $cursorSQL{$cursorRef} = $SQL;    # Set up the base SQL
-  displayDebug("SQL is: $cursorSQL{$cursorRef}",1,$currentSubroutine);
+    $cursorSQL{$cursorRef} = $SQL;    # Set up the base SQL
+    displayDebug("SQL is: $cursorSQL{$cursorRef}",1,$currentSubroutine);
   
-  establishDOTLoop($card,$DBConnectionRef,$cursorRef);                                 # establish the cursor and loop variables
+    establishDOTLoop($card,$DBConnectionRef,$cursorRef);                                 # establish the cursor and loop variables
+  }
 
 } # end of processXDOT
 
@@ -4756,12 +5802,13 @@ sub establishDOTLoop {
 
   if ( ( $skelSelSkipCards eq "No" ) ) { # not excluded because of a failed )SEL
     if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
+      setVariable('LASTDOTCount','0');               # initialise variable
       my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
       displayDebug("PUSHING onto stack - #entries $cnt",2,$currentSubroutine);
-      displayDebug("Pushing control counts: \$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",2,$currentSubroutine);
+      displayDebug("Pushing control counts: \$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",1,$currentSubroutine);
       $skelDOTCount++;                     # Keep track of )DOT control cards encountered
-      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # An )open hasn't created the database connection yet - fail this statement
-        displayError("A previous )OPEN statement has not created a connection for $DBConnectionRef\nThis )DOT will be ignored",$currentSubroutine);
+      if ( ! defined($skelConnection{$DBConnectionRef}) ) { # A )LOGON hasn't created the database connection yet - fail this statement
+        displayError("A previous )LOGON statement has not created a database connection for $DBConnectionRef\nThis )DOT will be ignored",$currentSubroutine);
         $skelDOTSkipCards = "Yes";              # skip cards till we get to a )ENDDOT at the same level
         $skelDOT_resumeLevel = $skelDOTCount - 1;   # level at which processing will be resumed (will be tested for each )ENDDOT encountered) 
       }
@@ -4833,14 +5880,25 @@ sub processENDDOT {
   
   my $card = shift;  
 
-  if ( $skelDOTCount == 0 ) { # no previous matching )DOT
-    displayError("Problems with the )ENDDOT at card $currentSkelLine in skeleton $currentActiveSkel. No matching )DOT",$currentSubroutine);
-    return;
-  }
   if ( $skelSelSkipCards eq "No" ) {              # not skipping cards because of SEL
     if ( $skelDOTSkipCards eq "No" ) {            # not skipping cards because of DOT
 
-      if ( getNextRecord($currentCursorConnection) ) { #  data returned
+      # only check for preceding )DOT's and )XDOT's if you aren't skipping cards
+      if ( $skelDOTCount == 0 ) { # no previous matching )DOT
+        displayError("Problems with the )ENDDOT at card $currentSkelLine in skeleton $currentActiveSkel. No matching )DOT",$currentSubroutine);
+        return;
+      }
+
+      if ( $lastFlagSet ) {                       # )LAST has sent processing this way so treat as end of cursor
+        displayDebug(")LAST statement has skipped to )ENDDOT.",2,$currentSubroutine);
+        $skelDOTCount--;                          # only decrement the )DOT count when passing through the card
+        displayDebug("Processed )ENDDOT. DOT Count = $skelDOTCount, DOT Resume Level = $skelDOT_resumeLevel",1,$currentSubroutine);
+        verifyControlCounts();
+        setVariable('LASTDOTCount',$cursorRowNumber{$currentCursorConnection});
+        closeCursor($currentCursorConnection);
+        $lastFlagSet = 0;
+      }
+      elsif ( getNextRecord($currentCursorConnection) ) { #  data returned
         displayDebug("Data returned and put in Array. ",2,$currentSubroutine);
         $currentSkelLine = $DOTLocation{$currentCursorConnection};        # reset current skeleton line to the beginning of the loop
       }
@@ -4855,6 +5913,9 @@ sub processENDDOT {
     else { # Currently skipping within a DOT
       $skelDOTCount--;
       if ( $skelDOTCount == $skelDOT_resumeLevel ) {    # check if it is time to resume processing
+        # pop the saved entries off of the stack
+        displayDebug("Processed )ENDDOT. DOT Count = $skelDOTCount, DOT Resume Level = $skelDOT_resumeLevel",1,$currentSubroutine);
+        verifyControlCounts();
         $skelDOTSkipCards = "No";                       # stop skipping because of the )DOT failure
       }
     }
@@ -4863,6 +5924,154 @@ sub processENDDOT {
     displayDebug("Skipped: $card. SEL Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
   }
 } # end of processENDDOT
+
+sub processWHEN { 
+  # -----------------------------------------------------------
+  # Routine to process the )WHEN card 
+  # a )WHEN is of the form:    )WHEN <condition> THEN <statement>
+  #
+  # Note that the following control statements are not allowed on a WHEN command:
+  #
+  # )SEL 
+  # )IF 
+  # )SELELSE 
+  # )ENDSEL 
+  # )DOEXEC
+  # )ENDDOEXEC
+  # )DOF 
+  # )ENDDOF 
+  # )DOT 
+  # )XDOT 
+  # )ENDDOT 
+  #
+  # Usage: processWHEN(<control card>)
+  # Returns: Conditionally executes a limited set of non-flow control commands
+  # -----------------------------------------------------------
+  
+  my $currentSubroutine = 'processWHEN';
+  
+  my $card = shift;  
+  
+  if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
+  
+    # check for the existence of the THEN parameter .... if it doesn't exist skip the card with error message
+    my ($condition, $statement) = split (/[Tt][Hh][Ee][Nn]/, $card);   
+    
+    if ( defined($statement) ) { # THEN was there so continue on
+      my $tmpI = trim(substr($condition,6));                  # strip off the )WHEN at the start
+      displayDebug("condition=$condition, adjusted cond=$tmpI, statement=$statement",1, $currentSubroutine);    
+      displayDebug("Parsing the following statement (WHEN) : $tmpI",2,$currentSubroutine);
+      if ( processCondition($tmpI) ) {             # returns 1 if condition is true
+        $statement = trim($statement);             # remove leading and trailing spaces
+        if ( substr( $statement,0,1) eq ')' )  {   # it is a control card the check that it is a valid one to process
+          my @bits = split (" ", $statement);
+          my $tmpSrch = $bits[0];
+          $tmpSrch =~ s/\)/\\\)/g;      # escape otu the leading )
+          if ( ' )SEL )IF )SELELSE )ENDSEL )DOF )DOT )XDOT )ENDDOT )ENDDOF )ENDDOEXEC )DOEXEC ' =~ uc($tmpSrch) ) { # it is a control card that isn't allowed in a WHEN
+            displayError("Problems with the )WHEN at card $currentSkelLine in skeleton $currentActiveSkel. Control card used - $bits[0] - is not allowed on a WHEN card",$currentSubroutine);
+          } 
+          else { # all good to go
+            processControlCard($statement);
+          }
+        }
+        else { # it's not a control card ....
+          processLine($statement);
+        } 
+      }
+    }
+    else { # then doesn't exist so just skip the statement
+      displayError("Problems with the )WHEN at card $currentSkelLine in skeleton $currentActiveSkel. No THEN parameter",$currentSubroutine);
+    }
+  
+    displayDebug("Processed )SEL ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",1,$currentSubroutine);
+  }
+  else {
+    displayDebug("Skipped: $card, Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+  }
+} # end of processWHEN
+
+sub processCondition { 
+  # -----------------------------------------------------------
+  # Routine to process condition part of the )SEL, SELELSE or )WHEN card 
+  #
+  # It will process the DEFINED, NOT_DEFINED, EMPTY, NOT_EMPTY,  ROWS_EXIST and NO_ROWS_EXIST 
+  # functions itself but use evaluateCondition to evaluate all other checks
+  #
+  # Usage: processCondition(<conndition>)
+  # Returns: 1 or zero depending on the result of checking the condition
+  # -----------------------------------------------------------
+  
+  my $currentSubroutine = 'processCondition';
+  
+  my $card = shift;  
+
+  displayDebug("Condition being tested is '$card'",2,$currentSubroutine);
+  if ( uc(substr($card,0,8)) eq "DEFINED(" ) {       # special function DEFINED ....
+    my $tmpVar = substr($card,8,length($card)-9);    # assume that there is a trailing )
+    if ( defined($skelVarArray{$tmpVar}) ) {         # variable is defined  so evaluates true
+      return 1; 
+    }
+    else { # variable is not defined so evaluates false
+      return 0;
+    }
+  }
+  elsif ( uc(substr($card,0,12)) eq "NOT_DEFINED(" ) { # special function ....
+    my $tmpVar = substr($card,12,length($card)-13);    # assume that there is a trailing )
+    if ( defined($skelVarArray{$tmpVar}) ) {           # variable is defined  so evaluates false
+      return 0;
+    }
+    else { # variable is not defined so evaluates true
+      return 1;
+    }
+  }
+  elsif ( uc(substr($card,0,6)) eq "EMPTY(" ) { # special function ....
+    my $tmpVar = substr($card,6,length($card)-7);    # assume that there is a trailing )
+    if ( length($tmpVar) == 0 ) {                # variable has no information in it
+      return 1;
+    }
+    else { # variable contains something
+      return 0;
+    }
+  }
+  elsif ( uc(substr($card,0,10)) eq "NOT_EMPTY(" ) { # special function ....
+    my $tmpVar = substr($card,10,length($card)-11);    # assume that there is a trailing )
+    if ( length($tmpVar) == 0 ) {                # variable has no information in it
+      return 0;
+    }
+    else { # variable contains something
+      return 1;
+    }
+  }
+  elsif ( uc(substr($card,0,11)) eq "ROWS_EXIST(" ) { # special function ....
+    my $tmpSQL = substr($card,11,length($card)-12);   # assumes the function is terminated with a )
+    my $dbConnection = '';
+    for ( my $i = 0; $i < length($tmpSQL); $i++ ) {
+      if ( substr($tmpSQL,$i,1) eq ' ' ) { $tmpSQL = substr($tmpSQL, $i+1) ; last; } # stop when you get to the first space
+      $dbConnection .= substr($tmpSQL,$i,1);
+    }
+    $tmpSQL = trim($tmpSQL);        # trim leading and trailing spaces
+    return processCHECKFORROW("$dbConnection", $tmpSQL)  # will return1 if a row is found and 0 if no row is found or error
+  }
+  elsif ( uc(substr($card,0,14)) eq "NO_ROWS_EXIST(" ) { # special function ....
+    my $tmpSQL = substr($card,14,length($card)-15);      # assumes the function is terminated with a )
+    my $dbConnection = '';
+    for ( my $i = 0; $i < length($tmpSQL); $i++ ) {
+      if ( substr($tmpSQL,$i,1) eq ' ' ) { $tmpSQL = substr($tmpSQL, $i+1) ; last; } # stop when you get to the first space
+      $dbConnection .= substr($tmpSQL,$i,1);
+    }
+    $tmpSQL = trim($tmpSQL);        # trim leading and trailing spaces
+    if ( processCHECKFORROW("$dbConnection", $tmpSQL) ) { # will return1 if a row is found and 0 if no row is found or error
+      return 0;
+    }
+    else { # there were no rows
+      return 1;
+    }
+  }
+  else { # evaluate it as logical or numeric condition
+    return evaluateCondition($card) ;  # evaluate returns 1 for true and 0 for false
+  }
+  
+} # end of processCondition
 
 sub processSEL { 
   # -----------------------------------------------------------
@@ -4877,44 +6086,19 @@ sub processSEL {
   
   my $card = shift;  
 
-  if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
+   if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
     my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
     displayDebug("PUSHING onto stack - #entries $cnt",2,$currentSubroutine);
-    displayDebug("Pushing control counts: \$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",2,$currentSubroutine);
+    displayDebug("Pushing control counts: \$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",1,$currentSubroutine);
     $skelSELCount++;                                                      # keep track ofthe )SEL level we are at
-    my $tmpI = trim(substr($card,5));                                      # tmpI now holds the condition
+    my $tmpI = trim(substr($card,5));                                     # tmpI now holds the condition
     displayDebug("Passing the following condition (SEL) : $tmpI",2,$currentSubroutine);
-    if ( uc(substr($tmpI,0,8)) eq "DEFINED(" ) { # special function ....
-      my $tmpVar = substr($tmpI,8,length($tmpI)-9);
-      if ( defined($skelVarArray{$tmpVar}) ) { # variable is defined  so evaluates true
-        displayDebug("Condition evaluated to True",2,$currentSubroutine);
-        $skelGotoENDSEL = "Yes";                                          # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
-      }
-      else { # variable is not defined so evaluates false
-        displayDebug("Condition evaluated to False",2,$currentSubroutine);
-        $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
-        $skelSEL_resumeLevel = $skelSELCount - 1;                         # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
-        $skelGotoENDSEL = "No";                                           # indicates that we haven't finished with this )SEL as yet - there may be a )SELELSE that will be true
-      }
-    }
-    elsif ( uc(substr($tmpI,0,12)) eq "NOT_DEFINED(" ) { # special function ....
-      my $tmpVar = substr($tmpI,12,length($tmpI)-13);
-      if ( defined($skelVarArray{$tmpVar}) ) { # variable is defined  so evaluates false
-        displayDebug("Condition evaluated to False",2,$currentSubroutine);
-        $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
-        $skelSEL_resumeLevel = $skelSELCount - 1;                         # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
-        $skelGotoENDSEL = "No";                                           # indicates that we haven't finished with this )SEL as yet - there may be a )SELELSE that will be true
-      }
-      else { # variable is not defined so evaluates true
-        displayDebug("Condition evaluated to True",2,$currentSubroutine);
-        $skelGotoENDSEL = "Yes";                                          # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
-      }
-    }
-    elsif ( evaluateCondition($tmpI) ) { # evaluate returns 1 for true and 0 for false
+ 
+    if ( processCondition($tmpI) ) { # returns 1 if condition is true
       displayDebug("Condition evaluated to True",2,$currentSubroutine);
       $skelGotoENDSEL = "Yes";                                          # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
     }
-    else { # evaluated false
+    else { # condition evaluated to false
       displayDebug("Condition evaluated to False",2,$currentSubroutine);
       $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
       $skelSEL_resumeLevel = $skelSELCount - 1;                         # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
@@ -4926,6 +6110,7 @@ sub processSEL {
     $skelSELCount++;                                                      # keep track ofthe )SEL level we are at
     displayDebug("Skipped: $card, Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
   }
+
 } # end of processSEL
 
 sub processSELELSE { 
@@ -4955,43 +6140,18 @@ sub processSELELSE {
 	else { # the SELELSE has a condition parameter
           $tmpI = trim(substr($card,9));
           displayDebug("Passing the following condition (SELELSE) : $tmpI",2,$currentSubroutine);
-          if ( uc(substr($tmpI,0,8)) eq "DEFINED(" ) { # special function ....
-            my $tmpVar = substr($tmpI,8,length($tmpI)-9);
-            if ( defined($skelVarArray{$tmpVar}) ) { # variable is defined  so evaluates true
-              displayDebug("Condition evaluated to True",2,$currentSubroutine);
-              $skelGotoENDSEL = "Yes";                                          # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
-            }
-            else { # variable is not defined so evaluates false
-              displayDebug("Condition evaluated to False",2,$currentSubroutine);
-              $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
-              $skelSEL_resumeLevel = $skelSELCount - 1;                         # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
-              $skelGotoENDSEL = "No";                                           # indicates that we haven't finished with this )SEL as yet - there may be a )SELELSE that will be true
-            }
-          }
-          elsif ( uc(substr($tmpI,0,12)) eq "NOT_DEFINED(" ) { # special function ....
-            my $tmpVar = substr($tmpI,12,length($tmpI)-13);
-            if ( defined($skelVarArray{$tmpVar}) ) { # variable is defined  so evaluates false
-              displayDebug("Condition evaluated to False",2,$currentSubroutine);
-              $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
-              $skelSEL_resumeLevel = $skelSELCount - 1;                         # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
-              $skelGotoENDSEL = "No";                                           # indicates that we haven't finished with this )SEL as yet - there may be a )SELELSE that will be true
-            }
-            else { # variable is not defined so evaluates true
-              displayDebug("Condition evaluated to True",2,$currentSubroutine);
-              $skelGotoENDSEL = "Yes";                                          # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
-            }
-          }
-          elsif ( evaluateCondition($tmpI) ) { # evaluateCondition returns 1 for true and 0 for false
-	    displayDebug("Condition >$tmpI< evaluated to True",2,$currentSubroutine);
+          
+          if ( processCondition($tmpI) ) { # returns 1 if condition is true
+            displayDebug("Condition evaluated to True",2,$currentSubroutine);
 	    $skelSelSkipCards = "No";                        # process the cards in this )SELELSE group
-            $skelGotoENDSEL = "Yes";                         # after processing goto the )ENDSEL
+            $skelGotoENDSEL = "Yes";                         # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
           }
-          else { # condition was false
-            displayDebug("Condition >$tmpI< evaluated to False",2,$currentSubroutine);
-            $skelSelSkipCards = "Yes";                       # skip the cards in this )SELELSE group
-	    $skelSEL_resumeLevel = $skelSELCount -1;         # set the resume processing level
-	    $skelGotoENDSEL = "No";                          # keep checking other )SELELSE statements
-	  }
+          else { # evaluated false
+            displayDebug("Condition evaluated to False",2,$currentSubroutine);
+            $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
+            $skelSEL_resumeLevel = $skelSELCount - 1;                         # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
+            $skelGotoENDSEL = "No";                                           # indicates that we haven't finished with this )SEL as yet - there may be a )SELELSE that will be true
+          }
 	}
       }  
       else { # SELSkipCards was false which means that pervious SEL/SELELSE was satisfied
@@ -5027,6 +6187,7 @@ sub processENDSEL {
   
   my $card = shift;  
   
+  displayDebug(")ENDSEL: \$skelDOTSkipCards=$skelDOTSkipCards, \$skelSelSkipCards=$skelSelSkipCards, \$skelSELCount=$skelSELCount, \$skelSEL_resumeLevel=$skelSEL_resumeLevel\n",1,$currentSubroutine);
   if ( $skelDOTSkipCards eq "No" ) {   # not skipping cards (caused when )DOT returns no rows .... we're waiting for a )ENDDOT
     if ( $skelSelSkipCards eq "No" ) { # not skipping cards because of a failed )SEL
       $skelSELCount--;                                                        # Reduce the count of unmatched )DOTs
@@ -5047,7 +6208,40 @@ sub processENDSEL {
       displayError("ENDSEL without SEL. SelCount = $skelSELCount",$currentSubroutine);
     }
   }
+  else { # just adjust the count (as we would have incremented the count on the )SEL
+    $skelSELCount--;
+  }
 } # end of processENDSEL
+
+sub processASET { 
+  # -----------------------------------------------------------
+  # Routine to process the )ASET card
+  # a )ASET is of the form:    )SET <var> = <value>
+  #   Note: the var does not have a preceding :
+  #
+  # Usage: processASET(<control card>)
+  # Returns: sets a variable value (it does no evaluation)
+  # -----------------------------------------------------------
+  
+  my $currentSubroutine = 'processASET';
+  
+  my $card = shift;                    # get the card information
+  if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
+    my ( $varName, $varOp, $varValue ) = ( $card =~ /.*? ([^=]*)(=)(.*)/ ) ; 
+    if ( ! defined($varOp) ) { # check if it is an equals sign (if it is not defined then an = was not found)
+      displayError("Operator for )ASET must be '='.",$currentSubroutine);
+      return;
+    }
+    displayDebug("\)ASET string is " . substr($card,$currentLinePosition),1,$currentSubroutine);
+    $varName = trim($varName);
+    $varValue = substituteVariables(trim($varValue));
+    displayDebug("Value is = $varValue",1,$currentSubroutine);
+    setVariable($varName,$varValue);    # set the variable
+  }
+  else { # skip this card
+    displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+  }  
+} # end of processASet
 
 sub processSET { 
   # -----------------------------------------------------------
@@ -5167,7 +6361,7 @@ sub processDOEXEC {
   #                        OK to read      > 0 [should actually be the sequence number of the record being read] 
   #
   # Usage: processDOEXEC(<ctl card>)
-  # Returns: nothing but establishes thecontrol variables for a loop through the output of an executed command
+  # Returns: nothing but establishes the control variables for a loop through the output of an executed command
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'processDOEXEC'; 
@@ -5217,19 +6411,12 @@ sub processDOEXEC {
       if ( defined($ctlArray{$execRef}) ) {        # if it is defined then remove it
         displayDebug("Removing old cached version of ctlfile $execRef", 1, $currentSubroutine);
         $ctlLines[$ctlArray{$execRef}] = '';        # get rid of the existing control lines
-        undef $ctlArray{$execRef};                  # remove the skel name referrer
+        delete $ctlArray{$execRef};                 # remove the skel name referrer
       }
   
       $ctlArray{$execRef} = keys(%ctlArray);         # allocate the next array entry
       
       $ctlLines[$ctlArray{$execRef}][0]  = ',fixed,inExec,0,255';
-    }
-      
-    # establish the loop position for the )DOF statement
-    establishDOEXECLoopPosition($execRef);                  # sort out where the looping will occur
-      
-    if ( ! defined($DOEXECLocation{$execRef}) ) {           # couldn't find a loop position ... ignore this card (errors would have been thrown)
-      return ; 
     }
       
     # process the )DOEXEC statement and set parameters
@@ -5257,25 +6444,38 @@ sub processDOEXEC {
     displayDebug("Data file will be $currentExecFile",1,$currentSubroutine);
 
     if ( $execCTLFileName ne '' ) { # CTL file name supplied so load it up
-      # generate the CTL File full name
-      my $skelExecCTLDir = $ENV{'SKLCTLDIR'};
-      if ( ! defined($skelExecCTLDir) ) { $skelExecCTLDir = ''; } 
-      if ( $skelExecCTLDir eq "" ) {                          # just use the supplied names
-        $skelExecCTLFullName = $execCTLFileName;
+      # load the control cards
+      if ( (uc($execCTLFileName) =~ "^INLINE\:|^INLINE\=") || ( uc($execCTLFileName) eq 'INLINE') ) {    # does the ctl file start with either INLINE: or INLINE= or is just the word INLINE
+        loadInlineFileCTL($execRef);             # load the CTL file
       }
-      elsif ( substr($skelExecCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
-        $skelExecCTLFullName = "$skelExecCTLDir$execCTLFileName";
-      }
-      else { # no separator so add one
-        $skelExecCTLFullName = "$skelExecCTLDir$dirSep$execCTLFileName";
-      }
+      else { # it is a real file
+        # generate the CTL File full name
+        my $skelExecCTLDir = $ENV{'SKLCTLDIR'};
+        if ( ! defined($skelExecCTLDir) ) { $skelExecCTLDir = ''; }
+        if ( $skelExecCTLDir eq "" ) {                          # just use the supplied names
+          $skelExecCTLFullName = $execCTLFileName;
+        }
+        elsif ( substr($skelExecCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+          $skelExecCTLFullName = "$skelExecCTLDir$execCTLFileName";
+        }
+        else { # no separator so add one
+          $skelExecCTLFullName = "$skelExecCTLDir$dirSep$execCTLFileName";
+        }
 
-      displayDebug("CTL file will be $skelExecCTLFullName",1,$currentSubroutine);
-    
-      # now load the control file .....
-      loadFileCTL($execRef, $skelExecCTLFullName);
+        displayDebug("CTL file will be $skelExecCTLFullName",1,$currentSubroutine);
+        # now load the control file .....
+        loadFileCTL($execRef, $skelExecCTLFullName);
+
+      }
     }
     
+    # establish the loop position for the )DOF statement
+    establishDOEXECLoopPosition($execRef);                  # sort out where the looping will occur
+
+    if ( ! defined($DOEXECLocation{$execRef}) ) {           # couldn't find a loop position ... ignore this card (errors would have been thrown)
+      return ; 
+    }
+      
     # create the data file to be processed .....
     
     if (! open (outExec, ">",$currentExecFile) ) { 
@@ -5389,18 +6589,11 @@ sub processDOF {
     if ( $fileRef eq '' ) { $fileRef = 'inFile' };
     if ( $fileName eq '' ) { $fileName = 'inFile.txt' };
     if ( $CTLFileName eq '' ) { $CTLFileName = 'inFile.ctl' };
-      
+
     if ( defined($DOFLocation{$fileRef}) ) { # the file ref has already been used (and is still in use)
       displayError("fileRef $fileRef is already in use. Duplicate found at card number $currentSkelLine of $currentActiveSkel",$currentSubroutine);
       return;
     } 
-      
-    # establish the loop position for the )DOF statement
-    establishDOFLoopPosition($fileRef);                  # sort out where the looping will occur
-      
-    if ( ! defined($DOFLocation{$fileRef}) ) {           # couldn't find a loop position ... ignore this card (errors would have been thrown)
-      return ; 
-    }
       
     # process the )DOF statement and set parameters
     # generate the full file name ....
@@ -5420,28 +6613,41 @@ sub processDOF {
       $skelDataFullName = "$skelDataDir$dirSep$fileName";
     }
 
-    # generate the CTL File full name
-    my $skelCTLDir = $ENV{'SKLCTLDIR'};
-    if ( ! defined($skelCTLDir) ) { $skelCTLDir = ''; } 
-    if ( $skelCTLDir eq "" ) {                          # just use the supplied names
-      $skelCTLFullName = $CTLFileName;
+    if ( (uc($CTLFileName) =~ "^INLINE\:|^INLINE\=") || ( uc($CTLFileName) eq 'INLINE') ) {    # does the ctl file start with either INLINE: or INLINE= or is just the word INLINE
+      loadInlineFileCTL($fileRef);             # load the CTL file
     }
-    elsif ( substr($skelCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
-      $skelCTLFullName = "$skelCTLDir$CTLFileName";
-    }
-    else { # no separator so add one
-      $skelCTLFullName = "$skelCTLDir$dirSep$CTLFileName";
+    else { # it is a real file
+      # generate the CTL File full name
+      my $skelCTLDir = $ENV{'SKLCTLDIR'};
+      if ( ! defined($skelCTLDir) ) { $skelCTLDir = ''; } 
+      if ( $skelCTLDir eq "" ) {                          # just use the supplied names
+        $skelCTLFullName = $CTLFileName;
+      }
+      elsif ( substr($skelCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+        $skelCTLFullName = "$skelCTLDir$CTLFileName";
+      }
+      else { # no separator so add one
+        $skelCTLFullName = "$skelCTLDir$dirSep$CTLFileName";
+      }
+  
+      displayDebug("Data file will be $skelDataFullName, CTL file will be $skelCTLFullName",1,$currentSubroutine);
+      # now load the control file .....
+      loadFileCTL($fileRef, $skelCTLFullName);
+    
     }
 
-    displayDebug("Data file will be $skelDataFullName, CTL file will be $skelCTLFullName",1,$currentSubroutine);
-    # now load the control file .....
-    loadFileCTL($fileRef, $skelCTLFullName);
-    
+    # establish the loop position for the )DOF statement
+    establishDOFLoopPosition($fileRef);                  # sort out where the looping will occur
+
+    if ( ! defined($DOFLocation{$fileRef}) ) {           # couldn't find a loop position ... ignore this card (errors would have been thrown)
+      return ;
+    }
+
     # save the current file ref
     $currentFileRef = $fileRef;
-    
+      
     if ( defined ($ctlArray{$fileRef} ) ) {              # control file was loaded
-
+  
       # now open the file and read in the first record ....
       if ( !open ( $skelFileHandle{$fileRef}, "<", "$skelDataFullName" ) ) {
         # file not found (possibly)
@@ -5450,6 +6656,7 @@ sub processDOF {
         $skelFileStatus{$fileRef} = -1                               # set flag to indicate open error
       }
       else { # The file does at least exist 
+        getFileInformation($skelDataFullName, 'DOF');                # get file information
         $skelFileStatus{$fileRef} = 0;                               # either it will stay 0 which will mean the file is empty or it will be incremented by readDataFileRecord
         # save the file handle
         $skelFileRecord = readDataFileRecord($skelFileHandle{$fileRef}, $fileRef, 'F');
@@ -5470,6 +6677,7 @@ sub processDOF {
   else {
     displayDebug("Skipped: $card",2,$currentSubroutine);
   }
+
 } # end of processDOF 
 
 sub processENDDOEXEC {
@@ -5490,7 +6698,26 @@ sub processENDDOEXEC {
 
   if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards      
   
-    if ( $skelExecStatus{$currentExecRef} == -1) {            # the file was unable to be opened so treat as end of file
+    if ( $lastFlagSet ) {                                      # )LAST has sent processing this way so treat as end of file containing exec output
+      displayDebug(")LAST statement has skipped to )ENDDOEXEC.",2,$currentSubroutine);
+      undef $skelFileStatus{$currentExecRef};
+      if ( defined( $DOEXECLocation{$currentExecRef}) ) { undef $DOEXECLocation{$currentExecRef}; }
+      if ( defined( $skelExecHandle{$currentExecRef}) ) { undef $skelExecHandle{$currentExecRef}; }
+      if ( defined($ctlArray{$currentExecRef}) ) { undef $ctlLines[$ctlArray{$currentExecRef}]; } # clear out the array holding the control cards
+      undef $skelExecHandle{$currentExecRef} ;                 # clear out the file handle for the file
+      undef $skelExecStatus{$currentExecRef} ;                 # clear out the file status
+      delete $ctlArray{$currentExecRef};                       # clear out the control file reference number
+      $currentExecFile = pop(@execStack);                      # reinstate the old file name 
+      my $removed = unlink($currentExecFile);
+      close $currentExecRef;                                   # close the file holding the output
+      $currentExecRef = pop(@execStack);                       # reinstate the old fileRef
+
+      $skelDOEXECCount--;                                           # decrement )DOF count
+      displayDebug("Processed )ENDDOEXEC. DOEXEC Count = $skelDOEXECCount",1,$currentSubroutine);
+      verifyControlCounts();
+      $lastFlagSet = 0;
+    }
+    elsif ( $skelExecStatus{$currentExecRef} == -1) {            # the file was unable to be opened so treat as end of file
       displayDebug("File $currentExecRef  wasn't opened so treated as EOF.",2,$currentSubroutine);
       undef $skelFileStatus{$currentExecRef};
       if ( defined( $DOEXECLocation{$currentExecRef}) ) { undef $DOEXECLocation{$currentExecRef}; }
@@ -5498,9 +6725,10 @@ sub processENDDOEXEC {
       if ( defined($ctlArray{$currentExecRef}) ) { undef $ctlLines[$ctlArray{$currentExecRef}]; } # clear out the array holding the control cards
       undef $skelExecHandle{$currentExecRef} ;                 # clear out the file handle for the file
       undef $skelExecStatus{$currentExecRef} ;                 # clear out the file status
-      undef $ctlArray{$currentExecRef};                        # clear out the control file reference number
+      delete $ctlArray{$currentExecRef};                       # clear out the control file reference number
       $currentExecFile = pop(@execStack);                      # reinstate the old file name 
       my $removed = unlink($currentExecFile);
+      close $currentExecRef;                                   # close the file holding the output
       $currentExecRef = pop(@execStack);                       # reinstate the old fileRef
 
       $skelDOEXECCount--;                                           # decrement )DOF count
@@ -5516,9 +6744,10 @@ sub processENDDOEXEC {
       undef $skelExecHandle{$currentExecRef} ;                 # clear out the file handle for the file
       undef $skelExecStatus{$currentExecRef} ;                 # clear out the file status
       undef $ctlLines[$ctlArray{$currentExecRef}];             # clear out the array holding the control cards
-      undef $ctlArray{$currentExecRef};                        # clear out the control file reference number
+      delete $ctlArray{$currentExecRef};                       # clear out the control file reference number
       $currentExecFile = pop(@execStack);                      # reinstate the old file name 
       my $removed = unlink($currentExecFile);
+      close $currentExecRef;                                   # close the file holding the output
       $currentExecRef = pop(@execStack);                       # reinstate the old fileRef
 
       $skelDOEXECCount--;                                           # decrement )DOF count
@@ -5537,12 +6766,13 @@ sub processENDDOEXEC {
       else { # end of file so close up shop
         displayDebug("No more records in $currentExecRef",2,$currentSubroutine);
         undef $skelExecStatus{$currentExecRef};
-        if ( defined( $DOEXECLocation{$currentExecRef}) )    { undef $DOEXECLocation{$currentExecRef}; }
+        if ( defined( $DOEXECLocation{$currentExecRef}) ) { undef $DOEXECLocation{$currentExecRef}; }
         if ( defined( $skelExecHandle{$currentExecRef}) ) { undef $skelExecHandle{$currentExecRef}; }
         undef $skelExecHandle{$currentExecRef} ;                 # clear out the file handle for the file
         undef $skelExecStatus{$currentExecRef} ;                 # clear out the file status
         undef $ctlLines[$ctlArray{$currentExecRef}];             # clear out the array holding the control cards
-        undef $ctlArray{$currentExecRef};                        # clear out the control file reference number
+        delete $ctlArray{$currentExecRef};                       # clear out the control file reference number
+        close $currentExecRef;                                   # close the file holding the output
         $currentExecFile = pop(@execStack);                      # reinstate the old file name 
         my $removed = unlink($currentExecFile);
         $currentExecRef = pop(@execStack);                       # reinstate the old fileRef
@@ -5578,31 +6808,46 @@ sub processENDDOF {
 
   if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards      
   
-    if ( $skelFileStatus{$currentFileRef} == -1) {            # the file was unable to be opened so treat as end of file
-      displayDebug("File $currentFileRef  wasn't opened so treated as EOF.",2,$currentSubroutine);
-      undef $skelFileStatus{$currentFileRef};
-      if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
-      if ( defined( $skelFileHandle{$currentFileRef}) ) { undef $skelFileHandle{$currentFileRef}; }
-      if ( defined($ctlArray{$currentFileRef}) ) { undef $ctlLines[$ctlArray{$currentFileRef}]; } # clear out the array holding the control cards
-      undef $skelFileHandle{$currentFileRef} ;                 # clear out the file handle for the file
+    if ( $lastFlagSet ) {                                      # )LAST has sent processing this way so treat as end of file
+      displayDebug(")LAST statement has skipped to )ENDDOF.",2,$currentSubroutine);
       undef $skelFileStatus{$currentFileRef} ;                 # clear out the file status
-      undef $ctlArray{$currentFileRef};                        # clear out the control file reference number
+      if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
+      if ( defined( $skelFileHandle{$currentFileRef}) ) { undef $skelFileHandle{$currentFileRef}; } # clear out the file handle for the file
+      undef $ctlLines[$ctlArray{$currentFileRef}];             # clear out the array holding the control cards
+      delete $ctlArray{$currentFileRef};                       # clear out the control file reference number
+      close $currentFileRef;                                   # close the file
+      $currentFileRef = pop(@fileStack);                       # reinstate the old fileRef
+
+      $skelDOFCount--;                                           # decrement )DOF count
+      displayDebug("Processed )ENDDOF. DOF Count = $skelDOFCount",1,$currentSubroutine);
+      verifyControlCounts();
+      $lastFlagSet = 0;    
+    }
+    elsif ( $skelFileStatus{$currentFileRef} == -1) {            # the file was unable to be opened so treat as end of file
+      displayDebug("File $currentFileRef  wasn't opened so treated as EOF.",2,$currentSubroutine);
+      undef $skelFileStatus{$currentFileRef};                                                         # clear out the file status
+      if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
+      if ( defined( $skelFileHandle{$currentFileRef}) ) { undef $skelFileHandle{$currentFileRef}; }   # clear out the file handle for the file
+      if ( defined($ctlArray{$currentFileRef}) ) { 
+        undef $ctlLines[$ctlArray{$currentFileRef}];           # clear out the array holding the control cards
+      }
+      delete $ctlArray{$currentFileRef};                       # clear out the control file reference number
+      close $currentFileRef;                                   # close the file
       $currentFileRef = pop(@fileStack);                       # reinstate the old fileRef
 
       $skelDOFCount--;                                           # decrement )DOF count
       displayDebug("Processed )ENDDOF. DOF Count = $skelDOFCount",1,$currentSubroutine);
       verifyControlCounts();
     
-    }
+    } # 
     elsif ( $skelFileStatus{$currentFileRef} == 0 ) {          # file was empty so just treat as end of file
       displayDebug("File $currentFileRef was empty.",2,$currentSubroutine);
-      undef $skelFileStatus{$currentFileRef};
-      if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
-      if ( defined( $skelFileHandle{$currentFileRef}) ) { undef $skelFileHandle{$currentFileRef}; }
-      undef $skelFileHandle{$currentFileRef} ;                 # clear out the file handle for the file
       undef $skelFileStatus{$currentFileRef} ;                 # clear out the file status
+      if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
+      if ( defined( $skelFileHandle{$currentFileRef}) ) { undef $skelFileHandle{$currentFileRef}; } # clear out the file handle for the file
       undef $ctlLines[$ctlArray{$currentFileRef}];             # clear out the array holding the control cards
-      undef $ctlArray{$currentFileRef};                        # clear out the control file reference number
+      delete $ctlArray{$currentFileRef};                       # clear out the control file reference number
+      close $currentFileRef;                                   # close the file
       $currentFileRef = pop(@fileStack);                       # reinstate the old fileRef
 
       $skelDOFCount--;                                           # decrement )DOF count
@@ -5620,13 +6865,12 @@ sub processENDDOF {
       }
       else { # end of file so close up shop
         displayDebug("No more records in $currentFileRef",2,$currentSubroutine);
-        undef $skelFileStatus{$currentFileRef};
-        if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
-        if ( defined( $skelFileHandle{$currentFileRef}) ) { undef $skelFileHandle{$currentFileRef}; }
-        undef $skelFileHandle{$currentFileRef} ;                 # clear out the file handle for the file
         undef $skelFileStatus{$currentFileRef} ;                 # clear out the file status
+        if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
+        if ( defined( $skelFileHandle{$currentFileRef}) ) { undef $skelFileHandle{$currentFileRef}; } # clear out the file handle for the file
         undef $ctlLines[$ctlArray{$currentFileRef}];             # clear out the array holding the control cards
-        undef $ctlArray{$currentFileRef};                        # clear out the control file reference number
+        delete $ctlArray{$currentFileRef};                       # clear out the control file reference number
+        close $currentFileRef;                                   # close the file
         $currentFileRef = pop(@fileStack);                       # reinstate the old fileRef
   
         $skelDOFCount--;                                           # decrement )DOF count
@@ -5656,6 +6900,48 @@ sub processDISNOTE {
   displayNote(substr($card,9));                                             # display the message
 
 } # end of processDISNOTE 
+
+sub processSETLEFTJUSTTAB {
+  # -----------------------------------------------------------
+  # Routine to set the left justify tab stop (the value defaults to !)
+  #
+  # Usage:
+  # Returns:
+  # -----------------------------------------------------------
+
+  my $currentSubroutine = 'processSETLEFTJUSTTAB'; 
+  my $card = shift;                                                         # establish the card being processed
+  
+  if ( trim($card) eq '' ) { # no character on statement so just display the character in both debug and output
+    displayDebug("No character set on )SETLEFTJUSTTAB so displaying value: $leftJustTab",1,$currentSubroutine);
+    outputLineNT("No character set on )SETLEFTJUSTTAB so displaying value: $leftJustTab");
+  }
+  else {
+    $leftJustTab = substr(trim($card),0,1);    # set the character
+  }
+
+} # end of processSETLEFTJUSTTAB
+
+sub processSETRIGHTJUSTTAB {
+  # -----------------------------------------------------------
+  # Routine to set the right justify tab stop (the value defaults to ~)
+  #
+  # Usage:
+  # Returns:
+  # -----------------------------------------------------------
+
+  my $currentSubroutine = 'processSETRIGHTJUSTTAB'; 
+  my $card = shift;                                                         # establish the card being processed
+  
+  if ( trim($card) eq '' ) { # no character on statement so just display the character in both debug and output
+    displayDebug("No character set on )SETRIGHTJUSTTAB so displaying value: $rightJustTab",1,$currentSubroutine);
+    outputLineNT("No character set on )SETRIGHTJUSTTAB so displaying value: $rightJustTab");
+  }
+  else {
+    $rightJustTab = substr(trim($card),0,1);    # set the character
+  }
+
+} # end of processSETLEFTJUSTTAB
 
 sub processIMBED {
   # -----------------------------------------------------------
@@ -5698,18 +6984,59 @@ sub processTRACE {
 
 } # end of processTRACE 
 
+sub processDECIMALPLACES {
+  # -----------------------------------------------------------
+  # Routine to set the decimal places value 
+  #
+  # Usage: )DECIMALPLACES [number of decimal places]
+  # Returns: nothing, but sets the cursorDecimalPlaces value 
+  # -----------------------------------------------------------
+
+  my $currentSubroutine = 'processDECIMALPLACES';
+  my $card = shift;                                                         # establish the card being processed
+  my $precision = getToken($card);
+
+  if ( $precision eq '' ) {
+    $cursorDecimalPlaces = -1;
+  }
+  else {
+    if (isNumeric($precision)) { # parameter on the card is numeric
+      $cursorDecimalPlaces = int($precision);
+    }
+    else {
+      displayError ("Precision $precision is not numeric on the supplied )DECIMALPLACES control card");
+    }
+  }
+
+  displayDebug("cursorDecimalPlaces set to $cursorDecimalPlaces",0,$currentSubroutine);
+
+} # end of processDECIMALPLACES 
+
 sub processTRUNCZEROES {
   # -----------------------------------------------------------
   # Routine to set the truncatetrailingzeroes flag
   #
-  # Usage: )TRUNCZEROES
+  # Usage: )TRUNCZEROES [number of decimal places]
   # Returns: nothing, but sets the truncatetrailingzeroes flag
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'processTRUNCZEROES'; 
+  my $card = shift;                                                         # establish the card being processed
+  my $precision = getToken($card);
   
   $truncateTrailingZeroes = 1;
-  displayDebug("truncateTrailingZeroes flag set",0,$currentSubroutine);
+
+  if ( $precision ne '' ) {
+    if (isNumeric($precision)) { # parameter on the card is numeric
+      $cursorDecimalPlaces = int($precision);
+      displayDebug("cursorDecimalPlaces set to $cursorDecimalPlaces",2,$currentSubroutine);
+    }
+    else {
+      displayError ("Precision $precision is not numeric on the supplied )TRUNCZEROES control card");
+    }
+  }
+  
+  displayDebug("truncateTrailingZeroes flag set",2,$currentSubroutine);
 
 } # end of processTRUNCZEROES
 
@@ -5802,7 +7129,7 @@ sub processSKELVERS {
   # -----------------------------------------------------------
   # Routine to process the SKELVERS statemnent. The format of the statement is:
   #
-  # )SKELVERS  $Id: processSkeleton.pm,v 1.56 2017/01/05 23:23:14 db2admin Exp db2admin $
+  # )SKELVERS  $Id: processSkeleton.pm,v 1.109 2018/10/16 22:30:13 db2admin Exp db2admin $
   #
   # Usage: processVERSION(<control card>)
   # Returns: sets the internal variable skelVers
@@ -6003,7 +7330,23 @@ sub processControlCard {
   my $currentSubroutine = 'processControlCard'; 
 
   my $card = shift; # get the line to process - will be $skelLines[$skelArray{$currentActiveSkel}][$currentLinePosition]
- 
+
+  # check to see if the control card is a )FUNC statement so that the variable can be saved
+  $currentVariable = '';
+  $currentLinePosition = 0;
+  if ( uc(getToken($card)) eq ')FUNC' ) { # the statement is a )FUNC statement 
+    # this processing needs to be done here before any variable substitution
+    if ( $card !~ /=/ ) { # doesn't contain an = sign
+      my $a = getToken($card); # get the function name
+      if ( " FORMATSQL GDATE JDATE " !~ $a ) { # the function isn't one of FormatSQL, GDate or JDate
+        $a = getToken($card); # get the first parameter (this will be the name of the variable to be updated (with the colon)
+        if ( $a =~ /^\:/ ) { # ensure first character is a colon
+          $currentVariable = substr($a, 1); # lose the first character (which will be a :)
+        }
+      }
+    }
+  }
+     
   displayDebug("Control Card Processing Started - $card",2,$currentSubroutine);
   $card = substituteVariables($card); 
   displayDebug(">>> Card after substitution: $card",1,$currentSubroutine);
@@ -6022,8 +7365,11 @@ sub processControlCard {
       displayDebug("Skipped: $card",2,$currentSubroutine);
     }
   }
-  elsif ( $skelCardType eq ")SET" ) {      # SET control card - assign a value to a skeleton variable
+  elsif ( $skelCardType eq ")SET" ) {      # SET control card - assign a value to a skeleton variable (do any computations before assignment)
     processSET($card);
+  }
+  elsif ( ($skelCardType eq ")ASET" ) || ($skelCardType eq ")ASSIGN" ) ) {     # ASET/ASSIGN control card - assign a value to a skeleton variable (do NO computation)
+    processASET($card);
   }
   elsif ( $skelCardType eq ")LOGOFF" ) {   # LOGOFF control Card - Close a connection to a database - of the form )LOGOFF connRef
     processLOGOFF($card);
@@ -6046,6 +7392,18 @@ sub processControlCard {
   elsif ( $skelCardType eq ")SBOX" ) {     # SBOX Control Card - generate a formatted input table with check boxes
     processSBOX($card);
   }
+  elsif ( ($skelCardType eq ")LAST" ) || ($skelCardType eq ")LEAVE" ) ) {     # LAST Control Card - skip to the end of the loop
+    processLAST($skelCardType);
+  }
+  elsif ( $skelCardType eq ")NEXT" ) {     # NEXT Control Card - skip to the next loop iteration
+    processLAST($skelCardType);
+  }
+  elsif ( $skelCardType eq ")STOP" ) {     # STOP Control Card - stop all processing and return what has been generated so far
+    processSTOP($card);
+  }
+  elsif ( $skelCardType eq ")EXIT" ) {     # EXIT Control Card - stop all processing in the current skeleton and return to the next higher level
+    processEXIT($skelCardType);
+  }
   elsif ( $skelCardType eq ")DMP" ) {     # DMP Control Card - generate a file for diwnloading
     processDMP($card);
   }
@@ -6058,11 +7416,17 @@ sub processControlCard {
   elsif ( $skelCardType eq ")FVTAB" ) {    # FVTAB Control Card - generate a vertically formatted dump of a table
     processFVTAB($card);
   }
+  elsif ( $skelCardType eq ")DOSEL" ) {    # DOSEL Control Card - populate internal variables from a select statement
+    processDOSEL($card);
+  }
   elsif ( $skelCardType eq ")DOF" ) {      # DOF Control Card - read in a file - of the form )DOF [fileRef] [<fileName> [using <CTLFileName>]]
     processDOF($card);
   }
   elsif ( $skelCardType eq ")DOEXEC" ) {      # DOF Control Card - read in a file - of the form )DOF [fileRef] [<fileName> [using <CTLFileName>]]
     processDOEXEC($card);
+  }
+  elsif ( $skelCardType eq ")PARSE" ) {      # PARSE Control Card - break a string into variables
+    processPARSE($card);
   }
   elsif ( $skelCardType eq ")FDOF" ) {      # FDOF Control Card - display a file - of the form )FDOF [<fileName> [using <CTLFileName>]]
     processFDOF($card);
@@ -6088,6 +7452,9 @@ sub processControlCard {
   elsif ( $skelCardType eq ")TRACE" ) {    # TRACE Control Card - set a trace level for ProcessSkeleton
     processTRACE($card);
   }
+  elsif ( $skelCardType eq ")DECIMALPLACES" ) {    # DECIMALPLACES Control Card - set the number of decimal places to display for cursor variables
+    processDECIMALPLACES($card);
+  }
   elsif ( $skelCardType eq ")TRUNCZEROES" ) {    # TRUNCZEROES Control Card - set the truncateTrailingZeroes flag
     processTRUNCZEROES($card);
   }
@@ -6102,6 +7469,9 @@ sub processControlCard {
   }
   elsif ( $skelCardType eq ")FUNC" ) {     # FUNC Control Card - Apply a function to a variable
     processFUNC($card);
+  }
+  elsif ( $skelCardType eq ")WHEN" ) {     # WHEN Control Card - Optionally process a command
+    processWHEN($card);
   }
   elsif ( ($skelCardType eq ")SEL") || ($skelCardType eq ")IF") ) {          # SEL Control Card - Optionally process a group of cards (similar to an IF statement)
     processSEL($card);
@@ -6159,6 +7529,18 @@ sub processControlCard {
   }
   elsif ( ($skelCardType eq ")CM") || ($skelCardType eq ")COMMENT") ) { # CM Control Card - Ignore comment cards
   }
+  elsif ( ($skelCardType eq ")SETLEFTJUSTTAB") ) {    # Set the left justified tab stop
+    processSETLEFTJUSTTAB(substr($card,15));
+  }
+  elsif ( ($skelCardType eq ")FILE") ) {    # Get file information
+    processFILE($card);
+  }
+  elsif ( ($skelCardType eq ")RESETOUTPUT") ) {    # Clear all saved output (doesn't affect STDOUT output)
+    processRESETOUTPUT(substr($card,12));
+  }
+  elsif ( ($skelCardType eq ")SETRIGHTJUSTTAB") ) {    # Set the right justified tab stop
+    processSETRIGHTJUSTTAB(substr($card,16));
+  }
   else { # it wasn't a control card so treat is as a normal card
     if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
       processLine($card);
@@ -6186,14 +7568,24 @@ sub processFUNC {
   my $currentSubroutine = 'processFUNC'; 
   
   my $card = shift; # get the line to process - will be $skelLines[$skelArray{$currentActiveSkel}][$currentLinePosition]
+  
+  my $varName;   # name of the variable to update
+  my $varOp;     # should be = if it is an assignment 
 
   if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
     my $funcName = getToken($card);                      # function name
-    my $varName = getToken($card);                       # variable name
-    my $varOp = getToken($card);                         # should be =
+    
+    if ( $currentVariable ne '' ) {    # there is no equals and the first character of the first parm is a :
+      $varName = $currentVariable;     # set the variable to update
+      $varOp = '=';
+    }
+    else {
+      $varName = getToken($card);      # variable name
+      $varOp = getToken($card);        # should be =
+    }
       
     if ( $varOp ne "=" ) { # assignment must be =
-      displayError("Operator for )FUNC must must be '='. Operator found was $varOp",$currentSubroutine);
+      displayError("Operator for )FUNC $funcName must be '='. Operator found was $varOp\nAll functions without a leading variable and functions FORMATSQL, GDATE and JDATE require = ",$currentSubroutine);
       return;
     }
     my $varValue = '';
@@ -6223,8 +7615,10 @@ sub processFunction {
   #     LTRIM            - remove leading whitespace from a string
   #     RTRIM            - remove trailing whitespace from a string
   #     LEN              - return the length of the supplied parameter
+  #     SPLIT            - returns the xth value in the string delimted by the supplied delimiter ('' if not found)
+  #                        )FUNC SPLIT RET = <string to split> <string to be split on> [<entry to return>]
   #     INSTR            - returns the position of one string in another (-1 if not found)
-  #                        )FUNC INSTR RET = <string to search for> <string to be searched>
+  #                        )FUNC INSTR RET = <string to search for> <string to be searched> [<start pos|OCC:occurence>]
   #     LEFT             - return a number of characters from the left hand side of a string
   #     RIGHT            - return a number of characters from the right hand side of a string
   #     MID              - return a number of characters from the middle of a a string
@@ -6233,6 +7627,11 @@ sub processFunction {
   #                        spaces within a string will be preserved
   #     FORMATSQL        - return formatted SQL
   #     PAD              - Pad a string with characters
+  #     REPL             - REPLACE a string with another string
+  #                        )FUNC REPL RET = <string to search> <string to be replaced> <String to replace with>
+  #     WEBSAFE          - Returns a string with all special characters converted to HTML equivalents
+  #     LOWER            - Returns the string transformed to all lower case
+  #     UPPER            - Returns the string transformed to all upper case
   #     
   # Usage: processFunction(<Function>,<Parameters>)
   # Returns: the result of the function applied to the parameters
@@ -6258,6 +7657,12 @@ sub processFunction {
   }
   elsif ( uc($function) eq "RTRIM" ) { # Right TRIM function
     return rtrim($funcParm);
+  }
+  elsif ( (uc($function) eq "LOWER") || (uc($function) eq 'LC') ) { # lower case
+    return lc($funcParm);
+  }
+  elsif ( (uc($function) eq "UPPER") || (uc($function) eq 'UC') ) { # upper case
+    return uc($funcParm);
   }
   elsif ( uc($function) eq "LEN" ) { # length function
     return length($funcParm);
@@ -6319,6 +7724,7 @@ sub processFunction {
   elsif ( uc($function) eq "INSTR" ) { # instr function
     my $srchString = getToken($card);                       # search string
     my $baseString = getToken($card);                       # string to be searched
+    my $thirdParm = getToken($card);                        # third parameter ; either starting pos or OCCxxx where then it becomes the string occurence
     
     if ( ($srchString =~ /^'/) || ($srchString =~ /^"/) ) {     # it is a quoted string ....
       $srchString = substr($srchString,1,length($srchString)-2); # strip off the quotes
@@ -6328,14 +7734,39 @@ sub processFunction {
       $baseString = substr($baseString,1,length($baseString)-2); # strip off the quotes
     }
     
-    # INSTR MUST have 2 parms 
+    # INSTR MUST have at least 2 parms 
     
     if ( $baseString eq "" ) { # 2 parameters haven't been supplied
-      displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string>\nNote: It MUST have 2 parameters - Function will return -1",$currentSubroutine);
+      displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurence]\nNote: It MUST have 2 parameters - Function will return -1",$currentSubroutine);
       return -1;
     }
-    
-    displayDebug("srchString=$srchString, baseString=$baseString, index is " . index($baseString,$srchString),2,$currentSubroutine);
+	
+    if ( $thirdParm eq '' ) { $thirdParm = 0 } # set a default value of zero for the third parm
+    elsif ( ! isNumeric($thirdParm) ) { # parameter is not numeric so may be occurence 
+      if ( uc(substr( $thirdParm . "   ", 0,4)) eq "OCC:" ) { # check if we are looking for an occurence value
+        my $occ = substr($thirdParm,4);
+        if ( ! isNumeric($occ) ) {
+          displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurence]\nNote: Third parm must be either numeric or start with OCC: - 3rd parm will be assumed 1",$currentSubroutine);
+          $thirdParm = 0;
+        }
+        else { # we need to find an occurence of the string
+          my $spot = index($baseString,$srchString,0); # first occurence
+          my $occCount = 1;
+          while ( ($occCount < $occ) & ( $spot > -1 ) ) { # still more searching to do
+	    $spot = index($baseString,$srchString,$spot+1); # find the next entry
+  	    $occCount++;
+	  }
+	  return $spot; # return the last location found
+  	}
+      }
+      else { # not numeric and not OCC: so ignore it
+        displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurence]\nNote: Third parm must be either numeric or start with OCC: - 3rd parm will be assumed 0",$currentSubroutine);
+        $thirdParm = 0;
+      }
+    }
+    else {
+      displayDebug("srchString=$srchString, baseString=$baseString, index is " . index($baseString,$srchString,$thirdParm),2,$currentSubroutine);
+    }
 
     if ( $srchString =~ /^SPC\d*.*/ ) {                           # convert to a space filled string of length xxx where xxx is a literal of the form SPCxxx
       my ($numSpaces) = ( $srchString =~ /^SPC(\d*)[^\d]*/ ) ;
@@ -6345,8 +7776,58 @@ sub processFunction {
     
     displayDebug("srchString=$srchString, baseString=$baseString, index is " . index($baseString,$srchString),2,$currentSubroutine);
 
-    return index($baseString,$srchString);
+    return index($baseString,$srchString,$thirdParm);
   }  # end of INSTR function
+  elsif ( uc($function) eq "SPLIT" ) { # instr function
+    my $baseString = getToken($card);                       # string to be searched
+    my $strDelim = getToken($card);                         # string delimiter
+    my $thirdParm = getToken($card);                        # entry to return 
+    my $fourthParm = getToken($card);                       # max number of array elements (not supplied = unlimited)
+
+    if ( ($strDelim =~ /^'/) || ($strDelim =~ /^"/) ) {     # it is a quoted string ....
+      $strDelim = substr($strDelim,1,length($strDelim)-2); # strip off the quotes
+    }
+
+    if ( ($baseString =~ /^'/) || ($baseString =~ /^"/) ) {     # it is a quoted string ....
+      $baseString = substr($baseString,1,length($baseString)-2); # strip off the quotes
+    }
+
+    # SPLIT MUST have at least 2 parms
+
+    if ( $strDelim eq "" ) { # 2 parameters haven't been supplied
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: It MUST have 2 parameters - Function will return ''",$currentSubroutine);
+      return '';
+    }
+
+    if ( $thirdParm eq '' ) { $thirdParm = 0 } # set a default value of zero for the occurence
+
+    if ( ! isNumeric($thirdParm) ) {
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: If supplied, the third parameter must be numeric - it will be assumed to be 0",$currentSubroutine);
+      $thirdParm = 0;
+    }
+
+    if ( ( $fourthParm ne '' ) && ( ! isNumeric($fourthParm)) ) {
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: If supplied, the fourth parameter must be numeric - it will be assumed to be missing",$currentSubroutine);
+      $fourthParm = '';
+    }
+    elsif ( (isNumeric($fourthParm)) && ( $thirdParm >= $fourthParm) ) { # make sure that the entry is less than the number of entries
+      $fourthParm = $thirdParm + 1;
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: If supplied, the 4th Parm must be bigger than the 3rd Parm - it will be assumed to be $fourthParm",$currentSubroutine);
+    }
+
+    displayDebug("strDelim=$strDelim, baseString=$baseString, thirdParm=$thirdParm, fourthParm=$fourthParm",2,$currentSubroutine);
+
+    my @elemArr;
+    if ( $fourthParm eq '' ) {
+      @elemArr = split($strDelim, $baseString);
+    }
+    else {
+      @elemArr = split($strDelim, $baseString, $fourthParm);
+    }
+
+    return $elemArr[$thirdParm];   # return the wanted element
+
+  }  # end of SPLIT function
   elsif ( uc($function) eq "LEFT" ) {                       # LEFT function
     my $baseString = getToken($card);                       # string to be searched
     my $strLength = getToken($card);                        # number of chars to return
@@ -6426,8 +7907,11 @@ sub processFunction {
   }
   elsif ( uc($function) eq "FORMATSQL") { # format the supplied string as SQL
     $funcParm = trim($funcParm);
-    if ( uc($funcParm) =~ "^FILE\:|^SQL\:" ) {                    # does the sql start with either SQL: or FILE:
+    if ( uc($funcParm) =~ "^FILE\:|^SQL\:|^FILE\=|^SQL\=" ) {                    # does the sql start with either SQL: or FILE: or SQL= or FILE=
       $funcParm = loadSQL(trim(substr($funcParm,$+[0])) , $currentSubroutine);             # load the SQL
+    }
+    elsif ( (uc($funcParm) =~ "^INLINE\:|^INLINE\=") || ( uc($funcParm) eq 'INLINE') ) {   # does the sql start with either INLINE: or INLINE: or is INLINE
+      $funcParm = loadInlineCards($currentSubroutine);             # load the SQL
     }
     return formatSQL($funcParm);
   }
@@ -6541,8 +8025,48 @@ sub processFunction {
     return "$returned[4] $returned[0]$returned[3], $returned[2]"; # return the date as calculated from BASEDATE and NUMDAYS in the format "March 12th, 2015"
     
   } # end of JDATE function
+  elsif ( uc($function) eq "REPL" ) {                       # REPL function
+    my $baseString = getToken($card);                       # string to be searched
+    my $srchString = getToken($card);                       # String to be searched for
+    my $replString = getToken($card);                       # Replacement String
 
-  displayError("Function $function unknown. Known functions are:\n     INT, TRIM, LTRIM, RTRIM, LEN, INSTR, LEFT, RIGHT, MID, REMOVECRLF, REMOVEWHITESPACE, FORMATSQL,\n     GDATE, JDATE, PAD\nFunction will return nothing",$currentSubroutine);
+    if ( $srchString eq '') {                               # second parameter not supplied
+      displayError("REPL function format is:\n)FUNC REPL xxx = <string> <search string> <replacement string>\nNote: Function will remove string if replacement string not provided",$currentSubroutine);
+      return $baseString;
+    }
+
+    displayDebug("baseString=$baseString, srchString=$srchString, replString=$replString", 2, $currentSubroutine);
+
+    $baseString =~ s/$srchString/$replString/g; # do the replacement
+    return $baseString;                         # 
+
+  } # end of REPL function
+  elsif ( uc($function) eq "WEBSAFE" ) {                    # REPL function
+    my $baseString = getToken($card);                       # string to be converted
+
+    displayDebug("baseString=$baseString", 2, $currentSubroutine);
+
+    $baseString =~ s/\%/%25/g; # do the percent sign replacement - MUST be done first 
+    $baseString =~ s/\ /%20/g; # do the space replacement
+    $baseString =~ s/\!/%21/g; # do the exclamation replacement
+    $baseString =~ s/\"/%22/g; # do the double quotes replacement
+    $baseString =~ s/\#/%23/g; # do the number sign replacement
+    $baseString =~ s/\$/%24/g; # do the dollar sign replacement
+    $baseString =~ s/\&/%26/g; # do the ampersand replacement
+    $baseString =~ s/\'/%27/g; # do the single quote replacement
+    $baseString =~ s/\(/%28/g; # do the opening parenthesis replacement
+    $baseString =~ s/\)/%29/g; # do the closing parenthesis replacement
+    $baseString =~ s/\*/%2A/g; # do the asterisk replacement
+    $baseString =~ s/\+/%2B/g; # do the plus sign replacement
+    $baseString =~ s/\,/%2C/g; # do the comma replacement
+    $baseString =~ s/\-/%2D/g; # do the minus sign replacement
+    $baseString =~ s/\./%2E/g; # do the period replacement
+    $baseString =~ s/\//%2F/g; # do the slash replacement
+    return $baseString;                         # 
+
+  } # end of WEBSAFE function
+
+  displayError("Function $function unknown. Known functions are:\n     INT, TRIM, LTRIM, RTRIM, LEN, SPLIT, INSTR, LEFT, RIGHT, MID, REMOVECRLF, REMOVEWHITESPACE, FORMATSQL,\n     GDATE, JDATE, PAD\nFunction will return nothing",$currentSubroutine);
   return "";
 
 } # end of processFunction
@@ -6560,23 +8084,86 @@ sub processLine {
   my $card = shift; # get the line to process - will be $skelLines[$skelArray{$currentActiveSkel}][$currentLinePosition]
   my $tempLine ;
 
-  displayDebug("Start Processing Normal Card : $card",2,$currentSubroutine);
+  displayDebug("Start Processing Normal Card : $card",1,$currentSubroutine);
   if ( trim($card) eq "" ) { # it is a blank line
     displayDebug("Blank line",2,$currentSubroutine);
     outputLine($card);
   }
   else { # just do variable substitution
-    displayDebug("Doing tab and variable substitution for >$card<",2,$currentSubroutine);
     $tempLine = putInTabs(substituteVariables($card)); 
+    displayDebug("After tab and variable substitution >$tempLine<",1,$currentSubroutine);
     outputLine($tempLine);
   }
   
 } # end of  processLine
 
+sub adjustUnsetLengthFields {
+  # -----------------------------------------------------------
+  # Routine to set the length fields of unset FIXED entries
+  #
+  # Basically, a default length will be set where a length can be
+  # reasonably calculated
+  #
+  # Usage: adjustUnsetLengthFields($fileRef);
+  # Returns: Nothing but sets length valuefor undefined ctl cards
+  # -----------------------------------------------------------
+
+  my $fileRef = shift;
+  my $currentSubroutine = 'adjustUnsetLengthFields';
+  my $delimiter = ',';
+  my $next_delimiter = ',';
+
+  my $numCTLLines = $#{$ctlLines[$ctlArray{$fileRef}]} + 1;                    # set the number of lines in the array slice for this fileRef
+  for ( my $i=0 ; $i<$numCTLLines; $i++ ) {                                    # for each control line
+
+    displayDebug("CTL Field Array Entry being Processed: $ctlLines[$ctlArray{$fileRef}][$i]",1,$currentSubroutine);
+    my $ctlCard = $ctlLines[$ctlArray{$fileRef}][$i];                          # place the card into a variable for easier typing
+    $delimiter = substr($ctlCard,0,1);                                         # first char is the delimiter
+
+    # break the preparsed ctl line into it's parts (maximum of 8 parts)
+    displayDebug("CTL Card: $ctlCard",2,$currentSubroutine);
+    my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8);
+
+    # initialise parameters that weren't supplied
+    if ( !defined($condValue) ) { $condValue = ''; }
+    if ( !defined($condLen) ) { $condLen = ''; }
+    if ( !defined($condStart) ) { $condStart = ''; }
+    if ( !defined($fldLen) ) { $fldLen = ''; }
+
+    if ( $delimType eq "FIXED" ) { # fixed length field
+      if ( ($fldLen eq '') || ( $fldLen eq '0') ) { # length hasn't been set for this element
+        if ( $i+1  == $numCTLLines ) { # we are on the last line so there is no calculation to do - default it to 15 chars
+          $fldLen ='15';
+        }
+        else { # a next control rtecord is available .....
+          if ( substr($ctlLines[$ctlArray{$fileRef}][$i+1],1,5) eq 'FIXED' ) { # the next control card is a FIXED record too
+            # need to break the next line down ...
+            my $next_ctlCard = $ctlLines[$ctlArray{$fileRef}][$i+1];           # place the card into a variable for easier typing
+            $next_delimiter = substr($next_ctlCard,0,1);                       # first char is the delimiter
+ 
+            # break the preparsed ctl line into it's parts (maximum of 8 parts)
+            displayDebug("CTL Card: $next_ctlCard",2,$currentSubroutine);
+            my ($next_delNull,$next_delimType,$next_fldName, $next_fldStart, $next_fldLen, $next_condStart, $next_condLen, $next_condValue) = split (/[$next_delimiter]/,$next_ctlCard,8);
+
+            $fldLen = $next_fldStart - $fldStart;
+          }
+          else { # it's a delimited record so no idea where it starts - default length to 15
+            $fldLen ='15';
+          }
+        }
+        displayDebug("Adjusting fldLen to be $fldLen",1,$currentSubroutine);
+        $ctlLines[$ctlArray{$fileRef}][$i] = "$delimiter$delimType$delimiter$fldName$delimiter$fldStart$delimiter$fldLen$delimiter$condStart$delimiter$condLen$delimiter$condValue";
+      }
+    }
+
+  } # end of loop through ctl lines
+
+}
+
 sub setDefinedVariablesForFile {
   # -----------------------------------------------------------
   # This routine accepts a passed record of data and a control definition
-  # using these it will break the record up and assign teh values to skeleton variables
+  # using these it will break the record up and assign the values to skeleton variables
   #
   # CTL file information will be of the form:
   #
@@ -6601,12 +8188,13 @@ sub setDefinedVariablesForFile {
   
   my $fileRef = shift;       # What CTL file we should use to decode the record
   my $fileRecord = shift;    # the record being read in
-  #my $fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue, $fldValue, $testValue;
-  #my $setVar, $i, $currCTLi, $delimiter, $delNull,$delimType;
-  #my $delimArr;
-
-  my $skelDOFIgnoreRecord = "No";    # initialise flag indicating if the control file indicates thatthis record should be skipped
+  
+  my $skelDOFIgnoreRecord = "No";    # initialise flag indicating if the control file indicates that this record should be skipped
   displayDebug("Looking for $fileRef in cache",1,$currentSubroutine);
+  
+  my $tmpB = (keys %ctlArray);
+  displayDebug("# keys: $tmpB",1,$currentSubroutine); 
+  foreach my $tmpA (keys %ctlArray) { displayDebug(">>>>> $tmpA, $ctlArray{$tmpA}",1,$currentSubroutine); }
 
   # control array is defined in $ctlLines[$ctlArray{$fileRef}]
   
@@ -6620,15 +8208,15 @@ sub setDefinedVariablesForFile {
   my $delimiter;                                                               # control card delimiter (not the data record delimiter)
   my @delimArr;                                                                # array to hold the data record delimited data
   my $numCTLLines = $#{$ctlLines[$ctlArray{$fileRef}]} + 1;                    # set the number of lines in the array slice for this fileRef
-  for ( my $i=0 ; $i<$numCTLLines; $i++ ) {                                   # for each control line
+  for ( my $i=0 ; $i<$numCTLLines; $i++ ) {                                    # for each control line
   
     displayDebug("CTL Field Array Entry being Processed: $ctlLines[$ctlArray{$fileRef}][$i]",1,$currentSubroutine);
     my $ctlCard = $ctlLines[$ctlArray{$fileRef}][$i];                          # place the card into a variable for easier typing
     $delimiter = substr($ctlCard,0,1);                                         # first char is the delimiter
     
-    # break the preparse ctl line into it's parts (maximum of 8 parts)
+    # break the preparsed ctl line into it's parts (maximum of 8 parts)
     displayDebug("CTL Card: $ctlCard",2,$currentSubroutine);
-    my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split ($delimiter,$ctlCard,8); 
+    my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8); 
     
     # initialise parameters that weren't supplied
     if ( !defined($condValue) ) { $condValue = ''; }
@@ -6639,6 +8227,7 @@ sub setDefinedVariablesForFile {
     displayDebug("delimType is $delimType, fldName is $fldName, fldStart is $fldStart, fldLen is $fldLen, condStart is >$condStart<",1,$currentSubroutine);
     
     if ( uc($delimType) eq "DELIMITED" ) {                                     # it is a delimited control record .... split up the data record to save time
+      $fldStart = '\\' . $fldStart;
       @delimArr = ();                                                          # initialise an array to hold the delimiter conditions
       @delimArr = split($fldStart, $fileRecord);                               # for a delimited record the 4th parm is the delimiter so split the data record based on that
     }
@@ -6734,7 +8323,7 @@ sub loadFileCTL {
   # fixed,recKey,0,10,72,8,= 28
   #
   # delimited,recKey,:,1
-  # Note: the first character after the FIXED or DELIMITED is the delimiter
+  # Note: the first character after the FIXED or DELIMITED is the delimiter for the ctl record values (NOT the file being processed)
   #
   # Usage: loadFileCTL(<file Ref>, <CTL file name> )
   # Returns: loaded arrays
@@ -6744,6 +8333,7 @@ sub loadFileCTL {
   
   my $ctlRef = shift;                            # literal used to refer to this control file
   my $ctlFile = shift;                           # file to be loaded
+  my $currentFieldLoc = -1;                      # current field being defined
   $condNULLisMatch = 0;
   
   displayDebug("loading control file $ctlFile", 1,$currentSubroutine);
@@ -6755,16 +8345,21 @@ sub loadFileCTL {
       return;
     }
   }
-  else { # dont cahe so always reload the information
+  else { # dont cache so always reload the information
     if ( defined($ctlArray{$ctlRef}) ) {        # if it is defined then remove it
       displayDebug("Removing old cached version of ctlfile $ctlRef", 1, $currentSubroutine);
       $ctlLines[$ctlArray{$ctlRef}] = '';        # get rid of the existing control lines
-      undef $ctlArray{$ctlRef};                  # remove the skel name referrer
+      delete $ctlArray{$ctlRef};                 # remove the skel name referrer
     }
   }
   
   if ( ! defined($ctlArray{$ctlRef}) ) {         # Establish the new array entry number if one doesn't exist
-    $ctlArray{$ctlRef} = keys(%ctlArray);          # allocate the next array entry
+    displayDebug("# Array Elements $#ctlLines", 1, $currentSubroutine);
+    if ( $skelDebugLevel > 0 ) { # is it debug time? 
+      foreach my $tmpA ( keys %ctlArray) { displayDebug("ctlArray $tmpA: $ctlArray{$tmpA}",1,$currentSubroutine); }
+    }
+    $ctlArray{$ctlRef} = $#ctlLines + 1;          # allocate the next array entry
+    displayDebug("Allocating $ctlArray{$ctlRef} as the new CTL Array entry for $ctlRef", 1, $currentSubroutine);
   }
   
   #  load the CTL Cards
@@ -6773,7 +8368,7 @@ sub loadFileCTL {
   if ( ! open ($inCtl, "<", "$ctlFile") ) { # open has failed ...
       displayError("Open of $ctlFile has failed\nError: $?",$currentSubroutine);
       $ctlLines[$ctlArray{$ctlRef}] = '';        # get rid of the existing control lines
-      undef $ctlArray{$ctlRef};                  # remove the skel name referrer      
+      delete $ctlArray{$ctlRef};                 # remove the skel name referrer      
       return;
   }
   else { # load it up
@@ -6781,6 +8376,8 @@ sub loadFileCTL {
     my $j = 0;
     while ( <$inCtl> ) {
       chomp $_;                                # get rid of the CRLF
+
+      displayDebug("Input CTL File Line: $_", 1, $currentSubroutine);
         
       # skip comments
       
@@ -6800,7 +8397,7 @@ sub loadFileCTL {
       elsif ( uc($_) =~ /^DELIMITED/) { $delimiter = substr($_,9,1); } 
       else                            { $delimiter = ','; }              # delimiter defaults to comma
 
-      my @ctlVals = split ($delimiter,$_,7);                             # based on the delimiter split it into a max of 7 fields
+      my @ctlVals = split (/[$delimiter]/,$_,7);                             # based on the delimiter split it into a max of 7 fields
       $ctlLines[$ctlArray{$ctlRef}][$j] = $delimiter . $ctlVals[0];      # keep the def type (first char is now the delimiter)
        
       if ( " FIXED DELIMITED " !~ uc($ctlVals[0]) ) {                    # first parm is not correct so just skip the whole card
@@ -6841,11 +8438,27 @@ sub loadFileCTL {
       if (defined($ctlVals[3])) {                                           # parameter 4 exists ..... (for fixed it is length, for delimited it is occurrance)
         $tmpk = $ctlVals[3] * 1; 
         if ( $tmpk ne $ctlVals[3] ) {                                       # if $parm * 1 <> $parm then there must be some non-numeric stuff in the parm
-          displayError("Length Field in card " . $j . " should be numeric - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+          displayError("Length/Occurrance Field in card " . $j . " should be numeric - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+        }
+        else { # it is a number .....
+          if ( uc($ctlVals[0]) eq "DELIMITED" ) { # if it is delimited then adjust the current position
+            $currentFieldLoc = $tmpk;
+          }
         }
       }
-      else { # not defined
-        displayError("Length Field in card " . $j . " is missing - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+      else { # length/occurence not defined
+        if ( uc($ctlVals[0]) eq "DELIMITED" ) { # if not provided then there is a default value for DELIMITED entries ...
+          if ( $currentFieldLoc == -1 ) { # there is no current value set
+            $tmpk = 0;    # start at position 0
+          }
+          else { # just add one to the last position
+            $tmpk = $currentFieldLoc + 1;
+          }
+          $currentFieldLoc = $tmpk;
+        }
+        else { # it is a FIXED with no length
+          displayError("Length/Occurrence Field in card " . $j . " is missing - it will be adjusted to either 15 or to value where the current field stretches to the beginning of the next field",$currentSubroutine);
+        }
       }
       # add the identified parameter to the verified parameter string
       $ctlLines[$ctlArray{$ctlRef}][$j] .= $delimiter . $tmpk;
@@ -6903,14 +8516,254 @@ sub loadFileCTL {
   } # end of else load it up
   close $inCtl;
 
+  # set any unset legth field on FIXED record definitions
+  adjustUnsetLengthFields($ctlRef); # set any unset length fields
+
   if ( $skelDebugLevel  > 0 ) { # if we are debugging
     my $numCTLLines = $#{$ctlLines[$ctlArray{$ctlRef}]} + 1;                         # number of control lines in the array slice applicable to $ctlRef
     displayDebug("Number of CTL Lines accepted = $numCTLLines for $ctlFile", 1,$currentSubroutine);
     for ( my $k=0 ; $k < $numCTLLines ; $k++) {
-      displayDebug("CTL FILE - Line $k - $ctlLines[$ctlArray{$ctlRef}][$k]",1,$currentSubroutine);
+      displayDebug("CTL FILE Saved - Line $k - $ctlLines[$ctlArray{$ctlRef}][$k]",1,$currentSubroutine);
     }
   }
 } # end of loadFileCTL
+
+sub loadInlineFileCTL {
+  # -----------------------------------------------------------
+  # Routine to load up the DOF control file into arrays from
+  # inline control cards
+  #
+  # CTL file information will be of the form:
+  #
+  # FIXED,<fieldName>,<startPos>,<length>,<condition_pos>,<Condition_length>,<condition_Value>
+  # or
+  # DELIMITED,<fieldName>,<delimiter>,<occurrance>,<condition_pos>,<Condition_length>,<condition_Value>
+  # or
+  # DELIMITED,<fieldName>,<delimiter>,<occurrance>,DELIMITED,<occurrance>,<condition_Value>
+  #
+  # The condition field indicates when the field will hold a value
+  # a sample record would be;
+  # fixed,recKey,0,10,72,8,= 28
+  #
+  # delimited,recKey,:,1
+  # Note: the first character after the FIXED or DELIMITED is the delimiter for the ctl record values (NOT the file being processed)
+  #
+  # Usage: loadInlineFileCTL(<file Ref>)
+  # Returns: loaded arrays
+  # -----------------------------------------------------------
+
+  my $currentSubroutine = 'loadInlineFileCTL';
+
+  my $ctlRef = shift;                            # literal used to refer to this control file
+
+  my $currentFieldLoc = -1;                      # current field being defined
+  $condNULLisMatch = 0;
+
+  displayDebug("loading CTL records from inline statements", 1,$currentSubroutine);
+
+  # Check to see if the controlfile is already loaded
+  if ( $ctlCache ) {                            # use already loaded version if it exists .....
+    if ( defined($ctlArray{$ctlRef}) ) {        # if it is defined then use it
+      displayDebug("Using already loaded CTL file ref $ctlRef", 1, $currentSubroutine);
+      return;
+    }
+  }
+  else { # dont cache so always reload the information
+    if ( defined($ctlArray{$ctlRef}) ) {        # if it is defined then remove it
+      displayDebug("Removing old cached version of ctlfile $ctlRef", 1, $currentSubroutine);
+      $ctlLines[$ctlArray{$ctlRef}] = '';        # get rid of the existing control lines
+      delete $ctlArray{$ctlRef};                 # remove the skel name referrer
+    }
+  }
+
+  if ( ! defined($ctlArray{$ctlRef}) ) {         # Establish the new array entry number if one doesn't exist
+    displayDebug("# Array Elements $#ctlLines", 1, $currentSubroutine);
+    if ( $skelDebugLevel > 0 ) { # is it debug time?
+      foreach my $tmpA ( keys %ctlArray) { displayDebug("ctlArray $tmpA: $ctlArray{$tmpA}",1,$currentSubroutine); }
+    }
+    $ctlArray{$ctlRef} = $#ctlLines + 1;          # allocate the next array entry
+    displayDebug("Allocating $ctlArray{$ctlRef} as the new CTL Array entry for $ctlRef", 1, $currentSubroutine);
+  }
+
+  #  load the CTL Cards
+
+  $currentSkelLine++;
+  my $inCtl = '';
+  my $ctlLine = '';
+  my $delimiter;
+  my $j = 0;
+
+  while ( defined($skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]) ) { # if the next line exists then keep on processing
+    displayDebug("Card# $currentSkelLine is $skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]",2,$currentSubroutine);
+
+    if ( uc(substr(trim($skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]),0,14)) eq ")END_OF_INLINE" ) { # reached the inline cards terminator
+      # this should be the normal return point
+
+      adjustUnsetLengthFields($ctlRef); # set any unset length fields
+
+      if ( $skelDebugLevel  > 0 ) { # if we are debugging
+        my $numCTLLines = $#{$ctlLines[$ctlArray{$ctlRef}]} + 1;                         # number of control lines in the array slice applicable to $ctlRef
+        displayDebug("Number of Inline CTL Lines accepted = $numCTLLines", 1,$currentSubroutine);
+        for ( my $k=0 ; $k < $numCTLLines ; $k++) {
+          displayDebug("CTL FILE Saved - Line $k - $ctlLines[$ctlArray{$ctlRef}][$k]",1,$currentSubroutine);
+        }
+      }
+
+      return;
+    }
+
+    # process the next line
+    $ctlLine = $skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine];
+    displayDebug("Input CTL File Line: $ctlLine", 1, $currentSubroutine);
+
+    # skip comments
+    if ( uc(trim($ctlLine)) =~ /^#/ ) { # comments are basically any line that starts with a #
+      $currentSkelLine++;
+      next;
+    }
+
+    # validate the input control data
+    if ( uc(trim($ctlLine)) =~ /^COND_NULL_IS_MATCH$/ ) { # set the flag if this control parameter is passed
+      $condNULLisMatch = 1;                         # indicates that if a condition variable isn't found then it is considered a match (by default it is not)
+      $currentSkelLine++;
+      next;
+    }
+
+    # establish the field delimiter
+    if ( uc($ctlLine) =~ /^FIXED/)        { $delimiter = substr($ctlLine,5,1); }
+    elsif ( uc($ctlLine) =~ /^DELIMITED/) { $delimiter = substr($ctlLine,9,1); }
+    else                                  { $delimiter = ','; }              # delimiter defaults to comma
+
+    my @ctlVals = split (/[$delimiter]/,$ctlLine,7);                       # based on the delimiter split it into a max of 7 fields
+    $ctlLines[$ctlArray{$ctlRef}][$j] = $delimiter . $ctlVals[0];      # keep the def type (first char is now the delimiter)
+
+    if ( " FIXED DELIMITED " !~ uc($ctlVals[0]) ) {                    # first parm is not correct so just skip the whole card
+      displayError("CTL Card parameter should be FIXED or DELIMITED - will be ignored",$currentSubroutine);
+      $currentSkelLine++;
+      next;
+    }
+
+    if ( defined($ctlVals[1]) ) {                                      # field name has been supplied
+      # add the identified parameter to the verified parameter string (field name)
+      $ctlLines[$ctlArray{$ctlRef}][$j] .= $delimiter . $ctlVals[1];
+    }
+    else {                                                             # field name has not been supplied
+      displayError("CTL Card parameter must hasve a field name defined - card $ctlLine will be ignored",$currentSubroutine);
+      $currentSkelLine++;
+      next;
+    }
+
+    # Validate Start pos
+    my $tmpk = 0;
+    if (defined($ctlVals[2])) {                                         # parameter 3 exists .....
+      if ( uc($ctlVals[0]) eq "FIXED" ) {                               # for a FIXED parameter ensure that it is numeric
+        $tmpk = $ctlVals[2] * 1;
+        if ( $tmpk ne $ctlVals[2] ) {                                   # if $parm * 1 <> $parm then there must be some non-numeric stuff in the parm
+          displayError("Start Pos Field in card " . $j . " should be numeric - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+        }
+      }
+      else {                                                             # for a DELIMITED parameter parm 3 is just a string
+        $tmpk = $ctlVals[2];
+      }
+    }
+    else { # not defined
+      displayError("Start Pos Field/Delimiter in card " . $j . " is missing - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+    }
+
+    # add the identified parameter to the verified parameter string
+    $ctlLines[$ctlArray{$ctlRef}][$j] .= $delimiter . $tmpk;
+
+    # Validate Length/Occurrance
+    $tmpk = 0;
+    if (defined($ctlVals[3])) {                                           # parameter 4 exists ..... (for fixed it is length, for delimited it is occurrance)
+      $tmpk = $ctlVals[3] * 1;
+      if ( $tmpk ne $ctlVals[3] ) {                                       # if $parm * 1 <> $parm then there must be some non-numeric stuff in the parm
+        displayError("Length/Occurrance Field in card " . $j . " should be numeric - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+      }
+      else { # it is a number .....
+        if ( uc($ctlVals[0]) eq "DELIMITED" ) { # if it is delimited then adjust the current position
+          $currentFieldLoc = $tmpk;
+        }
+      }
+    }
+    else { # length/occurence not defined
+      if ( uc($ctlVals[0]) eq "DELIMITED" ) { # if not provided then there is a default value for DELIMITED entries ...
+        if ( $currentFieldLoc == -1 ) { # there is no current value set
+          $tmpk = 0;    # start at position 0
+        }
+        else { # just add one to the last position
+          $tmpk = $currentFieldLoc + 1;
+        }
+        $currentFieldLoc = $tmpk;
+      }
+      else {
+        displayError("Length/Occurrence Field in card " . $j . " is missing - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+      }
+    }
+
+    # add the identified parameter to the verified parameter string
+    $ctlLines[$ctlArray{$ctlRef}][$j] .= $delimiter . $tmpk;
+
+    # Validate Condition Start
+    $tmpk = 0;
+    if (defined($ctlVals[4])) {                                           # parameter 5 exists ..... (it is either Condition Start or DELIMITED)
+      if ( uc($ctlVals[4]) eq "DELIMITED" ) {                             # delimited condition
+        $tmpk = $ctlVals[4];
+      }
+      else {                                                              # Fixed location
+        $tmpk = $ctlVals[4] * 1;
+        if ( $tmpk ne $ctlVals[4] ) {                                     # if $parm * 1 <> $parm then there must be some non-numeric stuff in the parm
+          displayError("Condition Start Field in card " . $j . " should be numeric - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+        }
+      }
+    }
+    else { # not defined
+      $tmpk = "";                                                         # indicates that a condition was not supplied
+      displayDebug("Condition Start Field in card " . $j . " is missing - it will be set to a null value",2,$currentSubroutine);
+    }
+    # add the identified parameter to the verified parameter string
+    $ctlLines[$ctlArray{$ctlRef}][$j] .= $delimiter . $tmpk;
+
+    # If condition start has been supplied then do some more checking ......
+    if ( $tmpk ne "" ) {                                                  # i.e. Condition Start has been defined ....
+
+      # Validate Condition Length or Occurrance
+      my $tmpk = 0;
+      if (defined($ctlVals[5])) {                                         # parameter 6 exists ..... (it is either Condition Length or Occurrance)
+        $tmpk = $ctlVals[5] * 1;
+        if ( $tmpk ne $ctlVals[5] ) {                                     # if $parm * 1 <> $parm then there must be some non-numeric stuff in the parm
+          displayError("Condition Length Field in card " . $j . " should be numeric - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+        }
+      }
+      else { # not defined
+        displayError("Condition Length Field in card " . $j . " is missing - it will be adjusted to a numeric value of " . $tmpk,$currentSubroutine);
+      }
+      # add the identified parameter to the verified parameter string
+      $ctlLines[$ctlArray{$ctlRef}][$j] = $ctlLines[$ctlArray{$ctlRef}][$j] . $delimiter . $tmpk;
+
+      if ( defined($ctlVals[6])) {                                        # parameter 7 exists ..... (it is Condition value)
+        # add the identified parameter to the verified parameter string
+        $ctlLines[$ctlArray{$ctlRef}][$j] = $ctlLines[$ctlArray{$ctlRef}][$j] . $delimiter . $ctlVals[6];
+      }
+      else { # not defined so just add a delimter
+        $ctlLines[$ctlArray{$ctlRef}][$j] = $ctlLines[$ctlArray{$ctlRef}][$j] . $delimiter;
+      }
+    }
+    else { # no condition has been supplied so just blank out the last bits
+      $ctlLines[$ctlArray{$ctlRef}][$j] = $ctlLines[$ctlArray{$ctlRef}][$j] . $delimiter . $delimiter;
+    }
+    $currentSkelLine++;
+    $j++;
+  } # end of while looking for )END_OF_INLINE
+
+  # really should never get here - to be here you have hit the end of the skeleton and
+  # not found an )END_OF_INLINE
+
+  adjustUnsetLengthFields($ctlRef); # set any unset length fields
+
+  displayError("[loadInlineCards] Did not find a )END_OF_INLINE card", $currentSubroutine);
+
+} # end of loadInlineFileCTL
 
 sub setVariable {
   # -----------------------------------------------------------
@@ -6971,6 +8824,8 @@ sub setBaseVariables {
   setVariable('commVers', $a);
   $a = skelVersion();
   setVariable('prSkelVers', $a);
+  setVariable('lastError','');
+
 
 } # end of setBaseVariables 
 
@@ -7044,6 +8899,10 @@ sub processSkeleton {
       require DBD::SQLite;
       import DBD::SQLite;
     }
+    elsif ( uc($DBIModule) =~ 'ODBC' ) { # DBI::ODBC module requested
+      require DBD::ODBC;
+      import DBD::ODBC;
+    }
   }
   
   # re-initialise some data structures just in case process Skeleton is called twice
@@ -7085,14 +8944,17 @@ sub processSkeleton {
   my $linesToProcess = 1;
 
   while ( $linesToProcess ) { # while there is still a line to process ....
-    
     # current line is defined as : $skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine]
     my $card = $skelLines[$skelArray{$currentActiveSkel}][$currentSkelLine];
     displayDebug ("Processing Loop: $currentActiveSkel card number $currentSkelLine", 2,$currentSubroutine); 
     displayDebug ("Card $currentSkelLine = $card", 1,$currentSubroutine); 
     
     if ( substr( $card,0,1) eq ')' )  { # it is a control card (always processed in case they reset $skelSelSkipCards or $skelDOTSkipCards
+      # clear out the last error message variable
+      $statementError = '';
+    
       processControlCard($card);
+      setVariable('lastStatementError', $statementError);
     }
     else { # it's not a control card ....
       if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
@@ -7139,4 +9001,5 @@ sub processSkeleton {
 } # end of processSkeleton
 
 1;
+
 

@@ -2,20 +2,33 @@
 # --------------------------------------------------------------------
 # commonFunctions.pm
 #
-# $Id: commonFunctions.pm,v 1.18 2017/02/28 04:56:24 db2admin Exp db2admin $
+# $Id: commonFunctions.pm,v 1.30 2018/10/15 05:01:01 db2admin Exp db2admin $
 #
 # Description:
 # Package cotaining common code.
 #   Subroutines included:
-#     getOpt
-#     trim
+#     displayMinutes 
+#     getCurrentTimestamp 
+#     timeAdd 
+#     timeAdj
+#     timeDiff 
+#     commonVersion 
+#     getOpt 
+#     getOpt_form 
+#     trim 
+#     ltrim 
 #     rtrim
-#     ltrim
-#     date
+#     myDate 
+#     processDirectory 
+#     localDateTime 
+#     convertToTimestamp 
 #
 # Usage:
 #   trim()
 #     $x = trim($y) # strip blanks from the start and end of a string
+#
+#   timeAdj(TS,minutes)
+#     $x = timeAdj('2016.09.19 08:05:01','-15')   # returns a value of '2016.09.19 07:50:01'
 #
 #   ltrim()
 #     $x = ltrim($y) # strip blanks from the start of a string
@@ -166,6 +179,41 @@
 #
 # ChangeLog:
 # $Log: commonFunctions.pm,v $
+# Revision 1.30  2018/10/15 05:01:01  db2admin
+# add in getCurrentTimestamp routine
+#
+# Revision 1.29  2018/05/29 04:30:48  db2admin
+# add in processing to cope with web supplied string parameters containing spaces
+#
+# Revision 1.28  2018/04/03 06:14:13  db2admin
+# adjust getOpt routine to enforce hyphen identification of parameter names where specified
+# .
+#
+# Revision 1.27  2018/03/21 05:27:32  db2admin
+# Correct bug in processing of extended parameters (starting with --)
+# Allow partial entry of parameter names for extended parameters
+#
+# Revision 1.26  2018/02/13 23:50:16  db2admin
+# ensure that parameters to timeAdj and displayMinutes are integers
+#
+# Revision 1.25  2018/02/13 23:28:38  db2admin
+# replace with working version from another machine
+#
+# Revision 1.23  2018/02/13 23:13:44  db2admin
+# correct issue of non whole hours beingreturned from displayMinutes when less than 1 day run time
+#
+# Revision 1.22  2017/12/06 21:42:53  db2admin
+# add in timeAdj function
+#
+# Revision 1.21  2017/09/25 04:32:31  db2admin
+# add in convertToTimestamp function
+#
+# Revision 1.20  2017/04/24 02:14:43  db2admin
+# change default for datediff to minutes difference
+#
+# Revision 1.19  2017/04/10 03:03:37  db2admin
+# moved an upper case conversion to hopefully not reset the defiend flag
+#
 # Revision 1.18  2017/02/28 04:56:24  db2admin
 # add new parameter to timeDiff to allowing varying return units of measure
 #
@@ -230,7 +278,7 @@ use strict;
 # export parameters ....
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(trim ltrim rtrim commonVersion getOpt myDate $getOpt_web $getOpt_optName $getOpt_optValue getOpt_form @myDate_ReturnDesc $myDate_debugLevel $getOpt_diagLevel $getOpt_calledBy $parmSeparators processDirectory $maxDepth $fileCnt $dirCnt localDateTime $datecalc_debugLevel displayMinutes timeDiff timeAdd);
+our @EXPORT_OK = qw(trim ltrim rtrim commonVersion getOpt myDate $getOpt_web $getOpt_optName $getOpt_min_match $getOpt_optValue getOpt_form @myDate_ReturnDesc $myDate_debugLevel $getOpt_diagLevel $getOpt_calledBy $parmSeparators processDirectory $maxDepth $fileCnt $dirCnt localDateTime $datecalc_debugLevel displayMinutes timeDiff timeAdd timeAdj convertToTimestamp getCurrentTimestamp);
 
 # persistent variables
 
@@ -249,12 +297,18 @@ our $getOpt_optValue;        # contains the value of the option currently being 
 our $getOpt_web;             # indicates that the result is for the web
 our $getOpt_calledBy;        # indicates the routine calling the module
 our $getOpt_diagLevel;       # debug level in getopt
+our $getOpt_min_match = 2;   # minimum number of characters required for a parameter match (-1 => whole parameter equal)
 our $datecalc_debugLevel;    # debug level for date calculation routines
 our $parmSeparators = ' &';  # string contains characters to be used as separators in getOpt_form
 my @monthName;
+my %monthNumber;
 my @monthDays;
 our @myDate_ReturnDesc = ('Day of Month', 'Month', 'Year', 'Day Suffix', 'Month Name', 'Number of days since Base Date','Base Date', 'EOM','EOY','EOFY','BOM','Day of Week','Message');
 our $myDate_debugLevel ;
+my %getOpt_valid_parms;
+my $search_valid_parms = '';
+my %getOpt_caseinsens;   # 0 => case sensitive, 1 => case insensitive
+my %getOpt_requiresDash;
 
 BEGIN {
   $getOpt_prm = 0;
@@ -285,6 +339,10 @@ BEGIN {
   $monthDays[11] = "30";
   $monthName[12] = "December";
   $monthDays[12] = "31";
+  %monthNumber = ( 'Jan' =>  '01', 'Feb' =>  '02', 'Mar' =>  '03', 'Apr' =>  '04', 'May' =>  '05', 'Jun' =>  '06',
+                    'Jul' =>  '07', 'Aug' =>  '08', 'Sep' =>  '09', 'Oct' =>  '10', 'Nov' =>  '11', 'Dec' =>  '12',
+                    'January' =>  '01', 'February' =>  '02', 'March' =>  '03', 'April' =>  '04', 'May' =>  '05', 'June' =>  '06',
+                    'July' =>  '07', 'August' =>  '08', 'September' =>  '09', 'October' =>  '10', 'November' =>  '11', 'December' =>  '12' );
 #  $myDate_debugLevel = 2; 
   if ( ! defined($getOpt_diagLevel) ) { $getOpt_diagLevel = 0; }
   if ( ! defined($datecalc_debugLevel) ) { $datecalc_debugLevel = 0; }
@@ -306,6 +364,7 @@ BEGIN {
 sub displayMinutes {
 
   my $elapsed = shift;
+  $elapsed = int($elapsed); # make sure that the number of minutes is an integer
   my $currentRoutine = 'displayMinutes';
 
   if ( $datecalc_debugLevel > 1 ) { printDebug( "Total mins: $elapsed", $currentRoutine); }
@@ -314,12 +373,12 @@ sub displayMinutes {
 
   if ( $elapsed < 1440 ) { # under one day so just return hours and minutes
     my $mins = $elapsed % 60;
-    my $hours = ($elapsed - $mins)/60;
+    my $hours = int(($elapsed - $mins) / 60);
     return "$hours hour" . literalPlural($hours) . " $mins minute" . literalPlural($mins);
   }
 
   my $mins = $elapsed % 60;
-  my $totalHours = ($elapsed - $mins)/60;
+  my $totalHours = ($elapsed - $mins) / 60;
   my $hours = $totalHours % 24;
   my $days = ($elapsed - (60 * $hours) - $mins)/1440;
   return "$days day" . literalPlural($days) . " $hours hour" . literalPlural($hours) . " $mins minute" . literalPlural($mins);
@@ -358,14 +417,43 @@ sub printDebug {
 }
 
 # -----------------------------------------------------------------
+# getCurrentTimestamp - function to return the current time as a timestamp
+#
+# usage:    getCurrentTimesatmp()
+# returns:  '2016.09.19 08:20:00'
+#
+# -----------------------------------------------------------------
+
+sub getCurrentTimestamp {
+
+  my $currentRoutine = 'getCurrentTimestamp';
+
+  my ($second, $minute, $hour, $dayOfMonth, $month, $yearOffset, $dayOfWeek, $dayOfYear, $daylightSavings) = localtime();
+  my $year = 1900 + $yearOffset;
+  $month = $month + 1;
+  $hour = substr("0" . $hour, length($hour)-1,2);
+  $minute = substr("0" . $minute, length($minute)-1,2);
+  $second = substr("0" . $second, length($second)-1,2);
+  $month = substr("0" . $month, length($month)-1,2);
+  my $day = substr("0" . $dayOfMonth, length($dayOfMonth)-1,2);
+  return "$year.$month.$day $hour:$minute:$second";
+
+} # end of getCurrentTimestamp
+
+# -----------------------------------------------------------------
 # timeAdd - function to return a timestamp with a specified number of
 #           minutes added
+#
+#           timeAdj takes the same parameters but allows a negative value for 
+#           the adjustment minutes
+# 
+#           also timeAdd always returns 00 seconds
 #
 # usage:    timeAdd('2016.09.19 08:05:01','15')
 #           the parameters are:
 #               1. timestamp in the format yyyy.mm.dd hh:mm:ss
 #               2. elapsed time in minutes
-# returns:  '2016.09.19 08:20:01'  
+# returns:  '2016.09.19 08:20:00'  
 #
 # -----------------------------------------------------------------
 
@@ -381,9 +469,9 @@ sub timeAdd {
   $min = $min + $elapsed;
 
   # break the minutes into number of hours and minute remainders
-  my $nMin = $min % 60;                  # final minutes past the hour
+  my $nMin = $min % 60;                         # final minutes past the hour
   if ( $datecalc_debugLevel > 0 ) { printDebug( "total minutes: $min, new minute: $nMin", $currentRoutine); }
-  my $tempHr = (($min - $nMin)/60) + $hr;  # this is the number of hours into the future
+  my $tempHr = (($min - $nMin)/60) + $hr;       # this is the number of hours into the future
 
   my $nHr = $tempHr % 24;                # Final hour on the day
   $nMin = substr('00' . $nMin, length($nMin), 2); # pad out to 2 digits
@@ -396,6 +484,58 @@ sub timeAdd {
   if ( $datecalc_debugLevel > 0 ) { printDebug( "Base Date Offset: $T[5], New offset: $tempDay, New Date: $T1[2].$T1[1].$T1[0]", $currentRoutine); }
 
   return "$T1[2].$T1[1].$T1[0] $nHr:$nMin:00";
+
+}
+
+# -----------------------------------------------------------------
+# timeAdj - function to return a timestamp with a specified number of
+#           minutes adjusted
+#
+# usage:    timeAdd('2016.09.19 08:05:01','15')
+#           the parameters are:
+#               1. timestamp in the format yyyy.mm.dd hh:mm:ss
+#               2. elapsed time in minutes (negative or positive number)
+# returns:  '2016.09.19 08:20:01'  
+#
+# -----------------------------------------------------------------
+
+sub timeAdj {
+
+  my $currentRoutine = 'timeAdj';
+  my $startTime = shift;
+  my $elapsed = shift;
+  $elapsed = int($elapsed); # ensure that the elapsed time is an integer
+  my ($year, $mon, $day, $hr, $min, $sec) = ( $startTime =~ /(\d\d\d\d).(\d\d).(\d\d) (\d\d).(\d\d).(\d\d)/ );
+
+  if ( $datecalc_debugLevel > 0 ) { printDebug( "Timestamp: $startTime (year: $year, month: $mon, day: $day, hour: $hr, min: $min, secs: $sec). Elapsed: $elapsed", $currentRoutine); }
+  
+  # convert timestamp to number of minutes
+  
+  my @T = myDate("DATE\:$year$mon$day");   # convert date into number of days from the base date
+  my $TS_Minutes = ($T[5] * 1440) + ($hr * 60) + $min;
+  if ( $datecalc_debugLevel > 0 ) { printDebug( "Base Date Offset: $T[5], TS_Minutes: $TS_Minutes", $currentRoutine); }
+
+  # adjust the value 
+  $TS_Minutes = $TS_Minutes + $elapsed; # $elapsed may be positive or negative
+  if ( $datecalc_debugLevel > 0 ) { printDebug( "Minutes after adjustment: $TS_Minutes", $currentRoutine); }
+  
+  # Convert the value back to a timestamp .....
+  
+  my $new_days = int($TS_Minutes / 1440) ;         # days past the base date
+  $TS_Minutes = $TS_Minutes - ( $new_days * 1440); # now holds number of minutes past midnight
+  my $new_hours = int($TS_Minutes / 60) ; 
+  if ( $datecalc_debugLevel > 0 ) { printDebug( "New Days Offset: $new_days, Minutes after midnight: $TS_Minutes", $currentRoutine); }
+  $new_hours = substr('00' . $new_hours, length($new_hours), 2); # pad out to 2 digits
+  $TS_Minutes = $TS_Minutes - ( $new_hours * 60);  # now holds number of minutes past the hour
+  $TS_Minutes = substr('00' . $TS_Minutes, length($TS_Minutes), 2); # pad out to 2 digits
+  if ( $datecalc_debugLevel > 0 ) { printDebug( "New Hours Offset: $new_hours, Minutes after the hour: $TS_Minutes", $currentRoutine); }
+
+  # convert the days count back to a gregorian date
+  @T = myDate($new_days);   
+
+  if ( $datecalc_debugLevel > 0 ) { printDebug( "Returned Date: $T[2].$T[1].$T[0] $new_hours:$TS_Minutes:$sec", $currentRoutine); }
+
+  return "$T[2].$T[1].$T[0] $new_hours:$TS_Minutes:$sec";
 
 }
 
@@ -418,9 +558,10 @@ sub timeDiff {
   my $currentRoutine = 'timeDiff';
   my $startTime = shift;
   my $endTime = shift;
-  my $UOM = uc(shift);
+  my $UOM = shift;
 
   if ( ! defined($UOM) ) { $UOM = 'M'; } # when not supplied thedefault is minutes
+  $UOM = uc($UOM);
 
   # start time is formatted yyyy.mm.dd hh:mm:ss
 
@@ -449,10 +590,10 @@ sub timeDiff {
   if ( $datecalc_debugLevel > 1 ) { printDebug( "End Day Offset: $endDayOffset, End Mins Past Midnight: $endMinsPastMidnight", $currentRoutine); }
   if ( $datecalc_debugLevel > 2 ) { printDebug( "End Components: $eYear#$eMon#$eDay#$eHr#$eMin#$eSec", $currentRoutine); }
 
-  if ( $UOM eq 'M' ) { return $minsDiff; }
+  if ( $UOM eq 'D' ) { return $daysDiff; }
   elsif ( $UOM eq 'H' ) { return $hrsDiff; }
   elsif ( $UOM eq 'S' ) { return $secsDiff; }
-  else  { return $daysDiff; }
+  else  { return $minsDiff; }
 
 }
 
@@ -463,7 +604,7 @@ sub timeDiff {
 
 sub commonVersion {
 
-  my $ID = '$Id: commonFunctions.pm,v 1.18 2017/02/28 04:56:24 db2admin Exp db2admin $';
+  my $ID = '$Id: commonFunctions.pm,v 1.30 2018/10/15 05:01:01 db2admin Exp db2admin $';
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
   (my $name,my $x) = split(",",$nameStr);
@@ -475,7 +616,81 @@ sub commonVersion {
 }
 
 # -----------------------------------------------------------------
+# setParameterIfNecessary - set the parameter if necessary and
+# otherwise just sets it to space
+# -----------------------------------------------------------------
+
+sub setParameterIfNecessary {
+  
+  my $getOpt_prmName = shift;
+  my $webParmSet = shift;
+  my $origName = shift;    # if it was a partial match then this was the original parameter name
+
+  if ( $getOpt_valid_parms{$getOpt_prmName} eq ":" ) {     # is a parameter required?
+    if ( $webParmSet ne "" ) {                              # getOpt_web set and a parm has already been found
+      $getOpt_optName = $getOpt_prmName;                   # set the returned option name
+      $getOpt_optValue = $webParmSet;                       # set the returned parameter
+      $getOpt_prm_flag = "Y";
+    }
+    else { # normal space delimited parameters
+      $getOpt_optName = $getOpt_prmName;                     # set the option name
+      if ( defined($PARGV[$getOpt_prm+1] ) ) {                # there is another parm
+        if ( substr($PARGV[$getOpt_prm+1],0,1) eq "-" ) {     # check to see if it is another parameter
+          $getOpt_optValue = $getOpt_prmName;                # Pass back the option name as the parameter (value)
+          $getOpt_optName = ":";                              # name set to : to indicate error
+          $getOpt_prm_flag = "Y";
+        }
+        else { # we have a winner
+          $getOpt_optValue = $PARGV[$getOpt_prm+1];           # set the returned parameter
+          $getOpt_prm_flag = "Y";
+          $getOpt_prm++;
+        }
+      }
+      else { # parm was required and there are no more parms!
+        $getOpt_optValue = $getOpt_prmName;                  # Pass back the option name as the parameter
+        $getOpt_optName = ":";                                # name set to : to indicate error
+        $getOpt_prm_flag = "Y";
+      }
+    }
+  }
+  else { # Parameter is not required
+    $getOpt_optValue = "";
+    $getOpt_optName = $getOpt_prmName;
+    $getOpt_prm_flag = "Y";
+  }
+  
+  return;
+
+} # end of setParameterIfNecessary
+
+# -----------------------------------------------------------------
 # getOpt - function to manage the processing of passed parameters
+#
+# Parameters are of the form 'ab[c]b[c]..[|[d][e]f[c]|[d][e]f[c]....]
+#     where a - character to indicate parms are required (normally :)
+#           b - option (single character)
+#           c - (optional) indicator for parameters (will be the same as parm a). 
+#               If there it indicates that option has parameters
+#           d - (optional) indicator for multi character option: '--'
+#           e - (optional) if ^ indicates that the option is case insensitive
+#           f - (optional) long option name
+#
+#  so an example could be: ':h?d:|--database:|^db: and that would allow parameters like:
+#                 test.pl -d testdb
+#                 test.pl --database testdb
+#                 test.pl dB testdb
+#
+# NOTE: All single character parameters are case sensitive
+#       On the command line:
+#           All parameters defined in the single character section must be preceded by '-'
+#           All parameters defined in the multi character section must be preceded by either '--' or nothing
+#
+# Returns: $getOpt_optName : Parameter name if all ok
+#                            : if parameter name was ok but required parameter not supplied
+#                            * if parameter name was not defined
+#          $getopt_optValue: Parameter value if parameter required a parameter
+#                            Blank if no parameter required
+#                            Parameter name/value if $getOpt_optName set to : or *
 # -----------------------------------------------------------------
 
 sub getOpt {
@@ -483,6 +698,7 @@ sub getOpt {
   my $case_insens = "";
   my $getOpt_parmInd = ":";
   my $webParmSet = "";   # initially set no web parm
+  my $extendedParameter = 0; # initially parameter is assumed not to be extended
 
 #  our $getOpt_web;
   if ( ! defined($getOpt_calledBy) ) { 
@@ -497,15 +713,14 @@ sub getOpt {
      $getOpt_prm = 0;
   }
 
-  my $getOpt_numKeyWords=-1;
-  my $getOpt_numNonKeyWords=-1;
   my $QUERY_STRING = $ENV{'QUERY_STRING'};
 
   if ( ($#_ < 0) && ($QUERY_STRING eq '') ) {
     print STDERR "[$getOpt_calledBy] No parameters passed\n";
     return 0;
   }
-  
+ 
+  $QUERY_STRING =~ s/%27/\'/g; 
   # Define the variables .....
 
   my $i;
@@ -514,15 +729,8 @@ sub getOpt {
   my @getOpt_OptArr;
   my $getOpt_tmpKW;
   my $getOpt_KWLen;
-  my @getOpt_valid_parms;
-  my %getOpt_valid_parms;
-  my @getOpt_caseinsens;
-  my %getOpt_caseinsens;
-  my @KeyWords; 
-  my %KeyWords;
-  my $getOpt_silent;
   my $getOpt_prmChar;
-  my $getOpt_prmValue;
+  my $getOpt_prmName;
   my @webparm;   # used to split parameters by '=' for web use
   my $getOpt_schar;
 
@@ -554,6 +762,14 @@ sub getOpt {
         }
         else { # just a parameter
           $PARGV[$#PARGV + 1] = $ARGV[$i];
+          if ( substr($PARGV[$#PARGV],0,2) eq "\\\'" ) { # if the parameter starts with \'
+            $PARGV[$#PARGV] =~ s/^\\\'//g;  # get rid of the leading characters
+            while ( ( $i <= $#ARGV ) && ( substr($ARGV[$i],-2,2) ne "\\\'" ) ) { # parameter is not terminated with a \'
+              $i++;
+              $PARGV[$#PARGV] .= " " . $ARGV[$i];
+            }
+            $PARGV[$#PARGV] =~ s/\\\'$//g;  # get rid of the trailing characters
+          }
         }
       }
     }
@@ -594,6 +810,14 @@ sub getOpt {
         }
         else { # just a parameter
           $PARGV[$#PARGV + 1] = $QPARGV[$i];
+          if ( substr($PARGV[$#PARGV],0,2) eq "\\\'" ) { # if the parameter starts with \'
+            $PARGV[$#PARGV] =~ s/^\\\'//g;  # get rid of the leading characters
+            while ( ( $i <= $#QPARGV ) && ( substr($QPARGV[$i],-2,2) ne "\\\'" ) ) { # parameter is not terminated with a \'
+              $i++;
+              $PARGV[$#PARGV] .= " " . $QPARGV[$i];
+            }
+            $PARGV[$#PARGV] =~ s/\\\'$//g;  # get rid of the trailing characters
+          }
         }
       }
     }
@@ -622,56 +846,70 @@ sub getOpt {
   #                 test.pl --database testdb
   #                 test.pl dB testdb
 
-  @getOpt_OptArr = split(/\|/,$_[0]);  # $_[0] is the single character parameters - split by |
-  # Gather the 2nd and subsequent parameters
-  $getOpt_parmInd = substr($getOpt_OptArr[0],0,1); # establish the parm indicator character
-  for ($i=1 ; $i <= $#getOpt_OptArr ; $i++ ) { # Process the  multi character options
-    if ( substr($getOpt_OptArr[$i],0, 2) eq "--" ) {   # If it is an extended parameter
-      if ( substr($getOpt_OptArr[$i],2, 1) eq "^" ) {  # If it is flagged case insensitive
-        $getOpt_tmpKW = uc(substr($getOpt_OptArr[$i],3));
-        $case_insens = "^";
+  if (! defined($getOpt_valid_parms{'###'}) ) { # Check if the parm definitions have been read in
+    $getOpt_valid_parms{'###'} = "Processed Extended Parms";            # flag that we have processed the parms on the first call in
+    @getOpt_OptArr = split(/\|/,$_[0]);  # $_[0] is the single character parameters - split by |
+    # Gather the 2nd and subsequent parameters
+    $getOpt_parmInd = substr($getOpt_OptArr[0],0,1); # establish the parm indicator character
+    for ($i=1 ; $i <= $#getOpt_OptArr ; $i++ ) { # Process the  multi character options (skip the first parameter for later processing)
+      if ( substr($getOpt_OptArr[$i],0, 2) eq "--" ) {   # it is an extended parameter
+        if ( substr($getOpt_OptArr[$i],2, 1) eq "^" ) {  # it is flagged case insensitive (first char is ^)
+          $getOpt_tmpKW = uc(substr($getOpt_OptArr[$i],3));
+          $case_insens = 1;
+        }
+        else { # it is not case insensitive
+          $getOpt_tmpKW = substr($getOpt_OptArr[$i],2);
+          $case_insens = 0;
+        }
+        $getOpt_KWLen = length($getOpt_tmpKW);
+        if ( substr($getOpt_tmpKW,$getOpt_KWLen-1,1) eq $getOpt_parmInd ) { # it requires a parameter (last char is the parameter indicator)
+          $getOpt_tmpKW = substr($getOpt_tmpKW,0,$getOpt_KWLen-1);          # get rid of the indicator
+          $getOpt_valid_parms{$getOpt_tmpKW} = ":";                         # non blank indicates it requires a parameter
+        }
+        else { # it doesn't require a parameter
+          $getOpt_valid_parms{$getOpt_tmpKW} = "";                          # flag it as case sensitive
+        }
+        $getOpt_caseinsens{$getOpt_tmpKW} = $case_insens;
+        # only bother to set the flag if it hasn't already been set
+        if (! defined($getOpt_requiresDash{$getOpt_tmpKW}) ) {  $getOpt_requiresDash{$getOpt_tmpKW} = 1; } # 
       }
-      else { # it is not case insensitive
-        $getOpt_tmpKW = substr($getOpt_OptArr[$i],2);
-        $case_insens = " ";
+      else { # process it as a keyword 
+        $getOpt_tmpKW = $getOpt_OptArr[$i];
+        # set up values for supplied parameter (or not)
+        if ( substr($getOpt_OptArr[$i],-1,1) eq $getOpt_parmInd ) { # indicator set for provided parameter so alter the parameter name
+          $getOpt_KWLen = length($getOpt_tmpKW);
+          $getOpt_tmpKW = substr($getOpt_tmpKW,0,$getOpt_KWLen-1);          # get rid of the indicator
+          $getOpt_valid_parms{$getOpt_tmpKW} = ':';
+        }
+        else {
+          $getOpt_valid_parms{$getOpt_tmpKW} = ' ';
+        }
+        
+        if ( substr($getOpt_OptArr[$i],0, 1) eq "^" ) {     # it is case insensitive 
+          $getOpt_tmpKW = uc(substr($getOpt_OptArr[$i],1)); # parameter starts after 1st char
+          $getOpt_caseinsens{$getOpt_tmpKW} = 1;          # flag it as case insensitive
+        }
+        else {
+          $getOpt_caseinsens{$getOpt_tmpKW} = 0;
+        }
       }
-      $getOpt_KWLen = length($getOpt_tmpKW);
-      if ( substr($getOpt_tmpKW,$getOpt_KWLen-1,1) eq $getOpt_parmInd ) { # it requires a parameter
-        $getOpt_tmpKW = substr($getOpt_tmpKW,0,$getOpt_KWLen-1);          # get rid of the indicator
-        $getOpt_valid_parms{$getOpt_tmpKW} = ":";                         # non blank indicates it requires a parameter
-      }
-      else { # it doesn't require a parameter
-        $getOpt_valid_parms{$getOpt_tmpKW} = "";                          # flag it as case sensitive
-      }
-      $getOpt_caseinsens{$getOpt_tmpKW} = $case_insens;
-    }
-    else { # process it as a keyword
-      $getOpt_numKeyWords++;
-      $getOpt_KWLen = length($getOpt_OptArr[$i]);
-      if ( substr($getOpt_OptArr[$i],0, 1) eq "^" ) { # first char may be flag for case insensitive
-        $getOpt_tmpKW = substr($getOpt_OptArr[$i],1); # parameter starts after 1st char
-        $KeyWords{$getOpt_tmpKW} = "^";               # mark it as case insensitive
-      }
-      else {
-        $KeyWords{$getOpt_OptArr[$i]} = "";           # mark it as case sensitive
-      }
+      $getOpt_requiresDash{$getOpt_tmpKW} = 0;
+      $search_valid_parms .= " $getOpt_tmpKW ";
     }
   }
-
+  
   # Process the 1st parameter separately ....
   $getOpt_schar = 0;
   if (! defined($getOpt_valid_parms{'####'}) ) { # Has this parm already been processed?
-    $getOpt_valid_parms{'####'} = "";            # flag that we have processed the parms
-    $getOpt_silent="N";
-    if ( substr($getOpt_OptArr[0],0,1) eq ":" ) {   # getOpt_silent does nothing as yet
-      $getOpt_silent="Y";
-      $getOpt_schar++;
-    }
+    $getOpt_valid_parms{'####'} = "Processed First Parm";            # flag that we have processed the parms on the first call in
+    $getOpt_schar++;          # skip the first character as it is the parameter indicator
     # now process each of the character options .....
     while ( $getOpt_schar <= length($getOpt_OptArr[0])-1 ) {
       $getOpt_prmChar = substr($getOpt_OptArr[0],$getOpt_schar,1);   # set option
       $getOpt_valid_parms{$getOpt_prmChar} = "";                     # set it up as a valid option without parm
-      $getOpt_caseinsens{$getOpt_prmChar} = "";                      # set it up as case sensitive (note all single char options are case sensitive)
+      $getOpt_caseinsens{$getOpt_prmChar} = 0;                       # set it up as case sensitive (note all single char options are case sensitive)
+      # only bother to set the requiresDash flag if it hasn't already been set
+      if (! defined($getOpt_requiresDash{$getOpt_prmChar}) ) {  $getOpt_requiresDash{$getOpt_prmChar} = 1; } # 
       $getOpt_schar++;
       if ( $getOpt_schar <= length($getOpt_OptArr[0])-1 ) { # if still more chars check if it is a flag       
         if ( substr($getOpt_OptArr[0],$getOpt_schar,1) eq $getOpt_parmInd ) { # Flagged as requiring parameters
@@ -709,97 +947,121 @@ sub getOpt {
   }
 
   # Now start processing the actual parameters
+  
+  my $parmDashInd = 0;                                              # indicates that the parameter is preceded by a dash (preceeded by - or --)
+  my $parmDashes = '';
 
   while ($getOpt_prm_flag ne "Y") {                                 # We are still looking
-    if ( defined($PARGV[$getOpt_prm]) ) {                           # if something exists
-      if ( substr($PARGV[$getOpt_prm],0,1) eq "-") {                # if it is a parameter (ie starts with a dash)
-        $getOpt_prmValue = trim(substr("$PARGV[$getOpt_prm]  ",1)); # remove the first character
-        if ( substr($getOpt_prmValue,0,1) eq "-" ) {                # if it is an extended parameter ....
-          $getOpt_prmValue = trim(substr("$getOpt_prmValue  ",1));  # remove the first char again
-        }
-        # and now it gets interesting ......
-        # If we are in HTML-land (ie $getOpt_web is "Y" ) then we can also also have parameters of
-        # the form -p=A -d=database so a single entry may actually contain the option and
-        # the parameter
-
-        if ( $getOpt_web eq "Y" ) {                      # must cope with web parameter format as well
-          if ( index($getOpt_prmValue,'=') > -1 ) {      # the parm contains an = sign
-            @webparm  = split('=',$getOpt_prmValue);     # split it on the = sign
-            if ( $getOpt_diagLevel > 0 ) {
-              print "web initial: $getOpt_prmValue<BR>\n";
-              print "web option: $webparm[0] parm: $webparm[1]<BR>\n";
-            }
-            $getOpt_prmValue = $webparm[0];              # establish a new parameter value
-            $webParmSet = $webparm[1];                   # set the parameter value
-          }
-        }
-
-        if ( (defined($getOpt_valid_parms{$getOpt_prmValue} ) )  ||
-             ( (defined($getOpt_valid_parms{uc($getOpt_prmValue)} )) && ($getOpt_caseinsens{uc($getOpt_prmValue)} eq "^") )
-           ) {                                                      # is it a valid parameter?
-          if ($getOpt_caseinsens{uc($getOpt_prmValue)} eq "^" ) {
-            $getOpt_prmValue = uc($getOpt_prmValue);                # if it is case insensitive then make the option upper case
-          }
-          if ( $getOpt_valid_parms{$getOpt_prmValue} eq ":" ) {     # is a parameter required?
-            if ( $webParmSet ne "" ) {                              # getOpt_web set and a parm has already been found
-              $getOpt_optName = $getOpt_prmValue;                   # set the returned option name
-              $getOpt_optValue = $webParmSet;                       # set the returned parameter
-              $getOpt_prm_flag = "Y";
-            }
-            else { # normal space delimited parameters
-              $getOpt_optName = $getOpt_prmValue;                     # set the option name
-              if ( defined($PARGV[$getOpt_prm+1] ) ) {
-                if ( substr($PARGV[$getOpt_prm+1],0,1) eq "-" ) {     # check to see if it is another parameter
-                  $getOpt_optValue = $getOpt_prmValue;                # Pass back the option name as the parameter 
-                  $getOpt_optName = ":";                              # name set to : to indicate error
-                  $getOpt_prm_flag = "Y";
-                }
-                else { # we have a winner
-                  $getOpt_optValue = $PARGV[$getOpt_prm+1];           # set the returned parameter
-                  $getOpt_prm_flag = "Y";
-                  $getOpt_prm++;
-                }
-              }
-              else { # parm was required and there are no more parms!
-                $getOpt_optValue = $getOpt_prmValue;                  # Pass back the option name as the parameter
-                $getOpt_optName = ":";                                # name set to : to indicate error
-                $getOpt_prm_flag = "Y";
-              }
-            }
-          }
-          else { # Parameter is not required
-            $getOpt_optValue = "";
-            $getOpt_optName = $getOpt_prmValue;
-            $getOpt_prm_flag = "Y";
-          }
-        }
-        else { # it is not a valid parameter (or at least it wasn't defined
-          $getOpt_optName = "*";
-          $getOpt_optValue = $getOpt_prmValue;
-          $getOpt_prm_flag = "Y";
+    $parmDashInd = 0;
+    if ( defined($PARGV[$getOpt_prm]) ) {                           # if a passed argument exists
+      $getOpt_prmName = trim($PARGV[$getOpt_prm]);                  # strip whitespace from the parameter
+      if ( substr($PARGV[$getOpt_prm],0,1) eq "-") {                # if it is a parameter (ie starts with a dash) then strip the leading -
+        $parmDashes = '-';                                          # remember it is 1 dash
+        $parmDashInd = 1;
+        $getOpt_prmName = trim(substr("$getOpt_prmName  ",1));      # remove the first character
+        if ( substr($getOpt_prmName,0,1) eq "-" ) {                 # if it is an extended parameter ....
+          $getOpt_prmName = trim(substr("$getOpt_prmName  ",1));    # remove the first char again
+          $extendedParameter = 1;                                   # flag that the parameter is extended
+          $parmDashes = '--';                                        # remember it is 2 dashes
         }
       }
-      else { # is it a keyword? (no leading -)
-        if ( defined( $KeyWords{$PARGV[$getOpt_prm]} ) ) { # it is a keyword and matches on case
-          $getOpt_optName = uc($PARGV[$getOpt_prm]);
-          $getOpt_optValue = $PARGV[$getOpt_prm];
-          $getOpt_prm_flag = "Y";
+
+      # and now it gets interesting ......
+      # If we are in HTML-land (ie $getOpt_web is "Y" ) then we can also also have parameters of
+      # the form -p=A -d=database so a single entry may actually contain the option and
+      # the parameter
+
+      if ( $getOpt_web eq "Y" ) {                      # must cope with web parameter format as well
+        if ( index($getOpt_prmName,'=') > -1 ) {      # the parm contains an = sign
+          @webparm  = split('=',$getOpt_prmName);     # split it on the = sign
+          if ( $getOpt_diagLevel > 0 ) {
+            print "web initial: $getOpt_prmName<BR>\n";
+            print "web option: $webparm[0] parm: $webparm[1]<BR>\n";
+          }
+          $getOpt_prmName = $webparm[0];              # establish a new parameter value
+          $webParmSet = $webparm[1];                   # set the parameter value
         }
-        elsif ( defined( $KeyWords{uc($PARGV[$getOpt_prm])} ) ) { # it is a keyword and matches on upper case
-          if ( $KeyWords{uc($PARGV[$getOpt_prm])} eq "^" ) { # case insensitive so all ok ....
-            $getOpt_optName = uc($PARGV[$getOpt_prm]);
-            $getOpt_optValue = $PARGV[$getOpt_prm];
+      }
+      
+      # construct the name to check against
+      my $testParmName = $getOpt_prmName;
+      if ( $getOpt_caseinsens{uc($getOpt_prmName)} ) { $testParmName = uc($getOpt_prmName); }
+
+      if ( ( defined($getOpt_valid_parms{$testParmName} ) ) )  {  # is it a valid parameter? defined = yes
+        if ( $getOpt_requiresDash{$testParmName} ) {              # check to see if the parm required a dash (and if it had one)
+          if ( $parmDashInd ) {                                   # dash required and found so it is a paramter name
+            $getOpt_prmName = $testParmName;                       # if it is case insensitive then make the option upper case
+            setParameterIfNecessary($getOpt_prmName, $webParmSet, "");
+          }
+          else {                                                  # no dash so not a parameter name 
+            $getOpt_optName = '*';                                # flag the fact that name isn't known
+            $getOpt_optValue = $parmDashes . $testParmName;
             $getOpt_prm_flag = "Y";
           }
-          else { # must match on case
+        }
+        else {
+          if ( $getOpt_caseinsens{uc($getOpt_prmName)} ) {
+            $getOpt_prmName = uc($getOpt_prmName);                # if it is case insensitive then make the option upper case
+          }
+          setParameterIfNecessary($getOpt_prmName, $webParmSet, "");
+        }
+      }
+      else { # it is not a valid parameter (or at least it wasn't defined)
+        if ( $extendedParameter || ( length($getOpt_prmName) > 1) ) { # if it is an extended parameter (starts with -- or > 1 character in length) then a partial match may be valid
+          if ( $getOpt_min_match == -1 ) { # match must be for whole parameter so it has failed
             $getOpt_optName = "*";
-            $getOpt_optValue = $PARGV[$getOpt_prm];
+            $getOpt_optValue = $parmDashes . $getOpt_prmName;
             $getOpt_prm_flag = "Y";
           }
+          else { # try progressive testing if the string is above or equal to the min match limit
+            if ( length($getOpt_prmName) >= $getOpt_min_match ) { # big enough to try and match
+              # first try case sensitive
+              my $tmpIndex = index($search_valid_parms," " . $getOpt_prmName); # check to see if we can find the restricted parm name in the table
+              my $tmpIndex2 = -1;     # this will hold the char position ofthe end ofthe parameter name
+              my $tmpParmName = '';   # will hold the trial parameter name
+              if ( $tmpIndex > -1 ) { # the string was found (so set up variables and exit loop)
+                $tmpIndex2 = index($search_valid_parms," ", $tmpIndex+1); # search for the next space past the found string
+                my $tmpParmName = substr($search_valid_parms, $tmpIndex+1, $tmpIndex2 - $tmpIndex - 1);
+                $getOpt_prm_flag = "Y";
+                $getOpt_optName = $tmpParmName;
+                # Decide if a parameter is needed and get it if possible
+                setParameterIfNecessary($tmpParmName, "", $getOpt_prmName);
+              }
+              else { # string not found so try case insensitive
+                $tmpIndex = index($search_valid_parms," " . uc($getOpt_prmName)); # check to see if we can find the restricted parm name in the table
+                if ( $tmpIndex > -1 ) { # the string was found , check if it is a case insensitve parameter
+                  $tmpIndex2 = index($search_valid_parms," ", $tmpIndex+1); # search for the next space past the found string
+                  my $tmpParmName = substr($search_valid_parms, $tmpIndex+1, $tmpIndex2 - $tmpIndex - 1);
+                  if ( $getOpt_caseinsens{$tmpParmName} ) { # the parameter is case insensitive so it is a match
+                    $tmpIndex2 = index($search_valid_parms," ", $tmpIndex+1); # search for the next space past the found string
+                    $getOpt_prm_flag = "Y";
+                    $getOpt_optName = $tmpParmName;
+                    # Decide if a parameter is needed and get it if possible
+                    setParameterIfNecessary($tmpParmName, "", $getOpt_prmName);
+                  }
+                  else { # it is not case sesitive so this isn't a match 
+                    $getOpt_optName = "*";
+                    $getOpt_optValue = $parmDashes . $getOpt_prmName;
+                    $getOpt_prm_flag = "Y";
+                  }
+                }
+                else { # string wasn't found 
+                  $getOpt_optName = "*";
+                  $getOpt_optValue = $parmDashes . $getOpt_prmName;
+                  $getOpt_prm_flag = "Y";
+                }
+              }
+            }
+            else { # extended parameter but shorter then the minimum match length so fail
+              $getOpt_optName = "*";
+              $getOpt_optValue = $parmDashes . $getOpt_prmName;
+              $getOpt_prm_flag = "Y";
+            }
+          }
         }
-        else { # no then just add treat it as an unknown parameter
+        else { # not extended parameter and not above minimum match limit
           $getOpt_optName = "*";
-          $getOpt_optValue = $PARGV[$getOpt_prm];
+          $getOpt_optValue = $parmDashes . $getOpt_prmName;
           $getOpt_prm_flag = "Y";
         }
       }
@@ -1417,4 +1679,75 @@ sub localDateTime {
   return ($yyyy_mm_dd . ' ' . $hour . ':' . $min . ':' . $sec);
 }
 
+# -----------------------------------------------------------------
+# convertToTimestamp - convert a datetime to a standard timestamp format
+# The script will attempt to figure out he format of the input date
+# -----------------------------------------------------------------
+
+sub convertToTimestamp {
+
+  # Supported input formats:
+  #      1. Sep 17, 2017 6:00:07 PM
+  #
+  # The output format will always be:
+  #         2017.09.17 18:00:07
+  
+  my $inDate = shift;
+
+  my ( $sec, $min, $hour, $day, $mon, $year);
+
+  # check for quotes ..... (and remove them)
+
+  if ( $inDate =~ /^".*"$/ ) {
+    ($inDate) = ($inDate =~ /^"(.*)"$/);
+  }
+
+  my @part = split(" ", $inDate);
+
+  if ( ! defined($part[4]) ) { # 4 parts not found - ignore call
+    return '';
+  }
+
+  # process month
+  if ( ! defined($monthNumber{$part[0]}) ) { # month not entered as the first parameter - return with no result
+    return '';
+  }
+  else {
+    $mon = $monthNumber{$part[0]};
+  }
+  
+  my @tmp;
+  # process the day .....
+  if ( $part[1] =~ /,/ ) {
+    @tmp = split(",", $part[1]); 
+    $day = trim($tmp[0]); # just dropping the comma
+  }
+  else {
+    $day = trim($part[1]);
+  }
+   
+  # process the year .....
+  $year = trim($part[2]); 
+
+  # process the time .....
+  @tmp = split(":", $part[3]); 
+  $hour = trim($tmp[0]);
+  $min = trim($tmp[1]);
+  $sec = trim($tmp[2]);
+
+  if ( ($part[4] eq 'PM') && ( $hour < 12 ) ) { $hour = $hour + 12; } # adjust to 24 hr clock
+   
+  # fill out numeric fields
+  
+  $day = substr("0" . $day, length($day)-1,2);       # pad the day number to 2 digits
+  $mon = substr("0" . $mon, length($mon)-1,2);       # pad the month value to 2 digits
+  $hour = substr("0" . $hour, length($hour)-1,2);    # pad the day number to 2 digits
+  $min = substr("0" . $min, length($min)-1,2);       # pad the day number to 2 digits
+  $sec = substr("0" . $sec, length($sec)-1,2);       # pad the day number to 2 digits
+  
+  return ($year . '.' . $mon . '.' . $day . ' ' . $hour . ':' . $min . ':' . $sec);
+}
+
 1;
+
+
