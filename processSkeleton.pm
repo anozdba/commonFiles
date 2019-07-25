@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------
 # processSkeleton.pm
 #
-# $Id: processSkeleton.pm,v 1.127 2018/12/14 04:09:41 db2admin Exp db2admin $
+# $Id: processSkeleton.pm,v 1.144 2019/07/22 02:32:12 db2admin Exp db2admin $
 #
 # Description:
 # Script to process a skeleton
@@ -31,6 +31,69 @@
 # ChangeLog:
 #
 # $Log: processSkeleton.pm,v $
+# Revision 1.144  2019/07/22 02:32:12  db2admin
+# add in comments for 1.142
+#
+# Revision 1.143  2019/07/22 02:28:09  db2admin
+# add in new function DATEADD ustilising commonFunctions.pm routines performDateAddition and performDateSubtraction
+#
+# Revision 1.142  2019/07/16 23:47:58  db2admin
+# if the line to be displayed isn't supplied to outputLine then initialise it to an empty string
+#
+# Revision 1.141  2019/07/03 05:29:01  db2admin
+# modify processing to enable cell styling for FVTAB
+#
+# Revision 1.140  2019/05/01 02:00:21  db2admin
+# ensure indentLevel is initialised in formatSQL
+#
+# Revision 1.139  2019/05/01 01:31:47  db2admin
+# add in a field type of -99 to represent CLOB data
+#
+# Revision 1.138  2019/05/01 01:11:51  db2admin
+# modify tab processing to allow different token terminators
+#
+# Revision 1.137  2019/04/30 23:16:29  db2admin
+# correct bug in the processing of right justified tabs
+#
+# Revision 1.136  2019/02/10 21:56:55  db2admin
+# remove timeAdd from imported modules list
+#
+# Revision 1.135  2019/01/25 01:36:16  db2admin
+# adjust parameter def for commonFunctions.pm
+#
+# Revision 1.134  2019/01/22 23:58:07  db2admin
+# Modify header capitalisation to also capitalise characters after an opening bracket
+# Change to default to not alter headers
+#
+# Revision 1.133  2019/01/22 23:02:24  db2admin
+# 1. Add in DISPLAYDIFF function
+# 2. Add in debugging literal to evaluateInfix calls
+# 3. )FTAB and )FVTAB now have automated header formatting when requested
+# 4. ERROR messages may now be optionally sent to STDOUT
+# 5. Errors thrown in calculator.pm will reflect the same target (STDOUT or STDERR) as processSkeleton.pm
+#
+# Revision 1.132  2019/01/18 04:16:57  db2admin
+# correct issue with numbering of IDs within tables
+#
+# Revision 1.131  2019/01/02 20:46:23  db2admin
+# 1. Ensure that no processing is done in DOF or FDOF after you reach end of file
+# 2. Clear select  condition after each )DOF and )ENDDOF [selectCond is a one use only variable]
+#
+# Revision 1.130  2018/12/28 04:26:09  db2admin
+# further work nested )SEL bug
+#
+# Revision 1.129  2018/12/27 21:31:14  db2admin
+# correct a bug with nested )SEL, )SELELSE, )ENDSEL
+#
+# Revision 1.128  2018/12/26 23:32:26  db2admin
+#  Added in the following functions:
+#  1. TIMEDIFF - difference between 2 timestamps in minutes
+#  2. TIMEADJ - adds the second parameter (minutes) to the first parameter (timestamp)
+#  3. DISPLAYMIN - converts a number of minutes to a formatted display string broken into days, hours and minutes
+# 4. REFORMATTS - converts a timestamp of format 'Sep 17, 2017 6:00:07 PM' to a standard format
+# Added in the following standard variable
+#   SYSTIMESTAMP - represents the current time in timestamp format
+#
 # Revision 1.127  2018/12/14 04:09:41  db2admin
 # update LASTFDOFCount progressively as the file is read
 #
@@ -66,7 +129,7 @@
 # which will set the variable var1 in scope main
 #
 # Revision 1.119  2018/11/29 01:18:11  db2admin
-# add in code to allow imbeded skeletons to reference variables in calling skeletons
+# add in code to allow imbedded skeletons to reference variables in calling skeletons
 #
 # Revision 1.118  2018/11/22 02:57:11  db2admin
 # dont strip off quotes from supplied imbed name if it is the only supplied parameter
@@ -95,7 +158,7 @@
 # 3. Allow the use of the following variables (reflecting the current internal variable values):
 #    SKELDELIMITER SKELDEBUGMODULES SKELSHOWSQL SKELVERBOSESQLERRORS OUTPUTMODE
 #    SKELMAXOUTPUT SKELMAXROWS SKELMAXTABLEOUT SKELDEBUGLEVEL TESTROUTINES INDEXCASEINSENSITIVE
-# 4. Rewrite the routine to allow the setting of vaiables from internal variables to ease
+# 4. Rewrite the routine to allow the setting of variables from internal variables to ease
 #    maintenance
 # 5. Allow outputMode to be set on the )SET or )ASET commands
 #
@@ -128,8 +191,8 @@
 # Revision 1.105  2018/10/09 03:04:19  db2admin
 # 1. add in new SPLIT function
 # )FUNC SPLIT x = "string" "delimiter" <element to return> <max elements>
-# 2. Modify INSTR function to include start pos or Occurence
-# )FUNX INSTR x = 'string to search for> <string to search in> [<start pos>|OCC:<occurence>]
+# 2. Modify INSTR function to include start pos or Occurrence
+# )FUNX INSTR x = 'string to search for> <string to search in> [<start pos>|OCC:<occurrence>]
 #
 # Revision 1.104  2018/09/06 08:27:04  db2admin
 # 1. Correct an issue looping in DOF definitions when wrong control type entered
@@ -517,15 +580,15 @@ use strict;
 use warnings;
 use Data::Dumper qw(Dumper);
 use User::pwent; # for getpwuid and getgrnam
-use commonFunctions qw(commonVersion getOpt myDate trim $getOpt_optName $getOpt_optValue @myDate_ReturnDesc);
-use calculator qw(calcVersion evaluateInfix $calcDebugLevel $calcDebugModules);
+use commonFunctions qw(trim ltrim rtrim commonVersion getOpt myDate $getOpt_web $getOpt_optName $getOpt_min_match $getOpt_optValue getOpt_form @myDate_ReturnDesc $cF_debugLevel $getOpt_calledBy $parmSeparators processDirectory $maxDepth $fileCnt $dirCnt localDateTime displayMinutes timeDiff  timeAdj convertToTimestamp getCurrentTimestamp performDateAddition performDateSubtraction processDuration);
+use calculator qw(calcVersion evaluateInfix $calcDebugLevel $calcDebugModules $calc_errorToSTDOUT);
 use Exporter;
 # use Data::UUID;           # only useful if package installed
 my $ug;
 # my $ug    = Data::UUID->new;
 
 our @ISA = 'Exporter';
-our @EXPORT_OK = qw(processSkeleton skelVersion formatSQL $skelDebugLevel $skelCache $ctlCache $execCtlCache testRoutine $testRoutines $outputMode $skelShowSQL $DBIModule $skelDebugModules $skelDelimiter $skelVerboseSQLErrors $DOCMD_allowedStatements $skelMaxOutput $skelMaxTableOut $skelMaxRows $indexCaseInsensitive);
+our @EXPORT_OK = qw(processSkeleton skelVersion formatSQL $skelDebugLevel $skelCache $ctlCache $execCtlCache testRoutine $testRoutines $outputMode $skelShowSQL $DBIModule $skelDebugModules $skelDelimiter $skelVerboseSQLErrors $DOCMD_allowedStatements $skelMaxOutput $skelMaxTableOut $skelMaxRows $indexCaseInsensitive $pskl_errorToSTDOUT);
 
 # published variables
 our $skelDelimiter = ',';   # delimiter to be used when generating dump file using )DMP
@@ -549,6 +612,7 @@ our $outputMode = 'STDOUT'; # variable defining the target environment for the g
 our $DBIModule = '';        # DBI module to use for database connectivity
 our $DOCMD_allowedStatements = ' INSERT UPDATE DELETE '; # default allowed statements for )DOCMD
 our $indexCaseInsensitive = 1;  # default to case insensitive indexes
+our $pskl_errorToSTDOUT = 0;     # indicates which stream errors are to go to
 
 # Bring across any environment variables that may exist
 
@@ -576,6 +640,7 @@ my $currentLinePosition = 0 ;             # current scan position in the line be
 my $outputLineCount = 0 ;                 # count of the number of lines that have been output
 my $skelReturnString = '' ;               # string to hold the generated output
 my $skelTermChar = " ()!,.;'~=<>+\|\"-/\\\n"; # characters that will terminate a token within a skeleton
+my $tabTermChar = " ()!,;'~=<>+\|\"-/\\\n"; # characters that will terminate a token for a tab entry
 my $numericFieldTypes = ' 2 3 4 5 6 7 8 -5 -6 NUMERIC'; # field types that define numeric values
 my $machine = '';                         # server the script is running on
 my @traceLevelStack = ();                 # stack to manage trace levels
@@ -655,9 +720,9 @@ my $FORM_has_been_opened = 0;             # flag to control closing/opening of H
 my $FIELDSET_has_been_opened = 0;         # flag to control closing/opening of HTML FIELDSET elements
 my %cellStyle = ();                       # matches a cell style to a cell (this is a 2 key array {colimn}{condition}
 my %rowStyle = ();                        # matches a cell style to a cell
-my $currentRowStyle = '';                 # row style defined for the current row
-my $currentCellStyle = '';                # row style defined for the current cell
-my $convertHeaders = 1;                   # flag indicating if FDOF headers should be adjusted
+my $currentRowStyle = '';                 # style defined for the current row
+my $currentCellStyle = '';                # style defined for the current cell
+my $convertHeaders = 0;                   # flag indicating if FDOF/FTAB/FVTAB headers should be adjusted
 my $selectCond = '';                      # selection condition to be applied to loops 
 my $styleCount = 0;                       # incrementing count of style cards processed
 
@@ -831,7 +896,7 @@ sub skelVersion {
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'skelVersion'; 
-  my $ID = '$Id: processSkeleton.pm,v 1.127 2018/12/14 04:09:41 db2admin Exp db2admin $';
+  my $ID = '$Id: processSkeleton.pm,v 1.144 2019/07/22 02:32:12 db2admin Exp db2admin $';
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
   my @N = split(",",$nameStr);
@@ -1088,6 +1153,7 @@ sub formatSQL {
       $newLine = 1;
     }
     elsif ( $SQLToken eq ',' ) { # comma - CR and indent
+      if ( ! defined($indentLevel) ) { $indentLevel = 0; }
       displayDebug("indentLevel = $indentLevel",1,$currentSubroutine);
       $spaces = multiChar(" ",$indentLevel + 5);
       $formattedSQL .= "\n" . $spaces . $SQLToken ." ";
@@ -1301,10 +1367,20 @@ sub displayError {
   if ( ! defined($sub) ) { $sub = "Unknown Subroutine" } # if nothing passed then default
 
   if ( ! defined( $lit ) ) { # Nothing to display so just display the date and time
-    print STDERR "$sub - $tDate $tTime - $currentActiveSkel($tmpLine) - ERROR\n";
+    if ( $pskl_errorToSTDOUT ) {
+      print "$sub - $tDate $tTime - $currentActiveSkel($tmpLine) - ERROR\n";
+    }
+    else {
+      print STDERR "$sub - $tDate $tTime - $currentActiveSkel($tmpLine) - ERROR\n";
+    }
   }
   else {
-    print STDERR "$sub - $tDate $tTime - $currentActiveSkel($tmpLine) : ERROR : $lit\n";
+    if ( $pskl_errorToSTDOUT ) {
+      print "$sub - $tDate $tTime - $currentActiveSkel($tmpLine) : ERROR : $lit\n";
+    }
+    else {
+      print STDERR "$sub - $tDate $tTime - $currentActiveSkel($tmpLine) : ERROR : $lit\n";
+    }
     setVariable('lastError',$lit);
     $statementError = $lit;
   }
@@ -2287,6 +2363,7 @@ sub substituteVariables {
             # SQL_WCHAR           -8
             # SQL_WVARCHAR        -9
             # SQL_WLONGVARCHAR   -10
+            # SQL_CLOB           -99
             # -------------------------------------------------------------------------
 
             $skelFieldValue = '';           # initialise it to empty
@@ -2310,6 +2387,10 @@ sub substituteVariables {
           elsif ( uc($varName) eq "SYSTIME" ) {
             $skelFieldFound = "Yes";
             $skelFieldValue =  getTime;
+          }
+          elsif ( uc($varName) eq "SYSTIMESTAMP" ) {
+            $skelFieldFound = "Yes";
+            $skelFieldValue =  getCurrentTimestamp;
           }
           elsif ( uc($varName) eq "SKELETON" ) {
             $skelFieldFound = "Yes";
@@ -2464,47 +2545,42 @@ sub putInTabs {
         for ( my $i=0; $i <= $#tabEntries; $i++ ) {                               # for each tab stop entry
           displayDebug("tabEntries[$i]=$tabEntries[$i],iPos=$iPos",2,$currentSubroutine);
           if ( $tabEntries[$i] >= $iPos ) {                                      # found first tab marker past the ! character 
-          displayDebug("Tab stop found is $tabEntries[$i], iPos: $iPos",2,$currentSubroutine);
-          if ( $iPos == 0 ) { # special case as it is the first character
-            $pad = space($tabEntries[$i] - $iPos);
+            displayDebug("Tab stop found is $tabEntries[$i], iPos: $iPos",2,$currentSubroutine);
+            if ( $iPos == 0 ) { # special case as it is the first character
+              $pad = space($tabEntries[$i] - $iPos);
+            }
+            else { 
+              $pad = space($tabEntries[$i] - $iPos);
+            }
+            last;                               
           }
-          else { 
-            $pad = space($tabEntries[$i] - $iPos);
-          }
-          last;                               
+        }   
+        # replace the tab
+        if ( $iPos == 0 ) { # special case as it is the first character - just pad the front and skip the 1st character
+          $convString = $pad . substr($convString, 1);
         }
-      }   
-      # replace the tab
-      if ( $iPos == 0 ) { # special case as it is the first character - just pad the front and skip the 1st character
-        $convString = $pad . substr($convString, 1);
+        else {
+          $convString = substr($convString, 0, $iPos) . $pad . substr($convString, $iPos + 1);
+        }  
+        # rescan for tab stops as the positions will have changed
+        $iPos = index($convString, $leftJustTab) ;
+        $jPos = index($convString, $rightJustTab) ;
+        displayDebug("$leftJustTab Pos: $iPos, $rightJustTab Pos: $jPos, Line: $convString",2,$currentSubroutine);
       }
-      else {
-        $convString = substr($convString, 0, $iPos) . $pad . substr($convString, $iPos + 1);
-      }  
-      # rescan for tab stops as the positions will have changed
-      $iPos = index($convString, $leftJustTab) ;
-      $jPos = index($convString, $rightJustTab) ;
-      displayDebug("$leftJustTab Pos: $iPos, $rightJustTab Pos: $jPos, Line: $convString",2,$currentSubroutine);
-    }
-    else { # $rightJustTab must be next to process (the $rightJustTab means that the next token will be right justified to the tab stop)
-      $pad = " ";
-      my $kPos = $jPos + 1;
-      # find the end of the token
-      while ( index($skelTermChar, substr($convString,$kPos,1)) == -1 ) { $kPos++; } 
+      else { # $rightJustTab must be next to process (the $rightJustTab means that the next token will be right justified to the tab stop)
+        $pad = " ";
+        my $kPos = $jPos + 1;
+        # find the end of the token
+        while ( index($tabTermChar, substr($convString,$kPos,1)) == -1 ) { $kPos++; } 
         $kPos--;   # adjust pos to the last char
-        # now we know how long the token is to right justify (kpos - jpos - 1) 
+        # now we know how long the token is to right justify (kpos - jpos) 
         # now find the tab stop that applies
         for ( my $i=0; $i <= $#tabEntries; $i++ ) {                    # loop through each tab stop  
           if ( $tabEntries[$i] >= $jPos ) {                          # found first tab marker past the ~ character 
-            if ( $jPos == 0 ) {                                      # special case as it is the first character
-              $pad = space($tabEntries[$i] - $kPos);
-            }
-            else {  
-              $pad = space($tabEntries[$i] - $kPos + 1);
-            }  
+            $pad = space($tabEntries[$i] - $kPos + 1);
             last;                                                    # finish the loop
-          }
-        }
+          } 
+        } 
         # now put the padding in 
         if ( $jPos == 0 ) {                                          # special case as it is the first character
           $convString = $pad . substr($convString, $jPos + 1);
@@ -2575,7 +2651,7 @@ sub evaluateCondition {
   my $substitutedStr = trim($evalStr);
   $calcDebugLevel = $skelDebugLevel;
   $calcDebugModules = $skelDebugModules;
-  my $answer = evaluateInfix($substitutedStr);
+  my $answer = evaluateInfix($substitutedStr,"$currentActiveSkel($currentSkelLine)");
   
   displayDebug("The evaluation of $evalStr ($substitutedStr) is $answer",2,$currentSubroutine);
   
@@ -2874,6 +2950,8 @@ sub verifyControlCounts {
     $d = -2; # set held DOEXEC count to unknown
   }
   else { # pop away
+    $skelSEL_resumeLevel = pop(@controlStack);  # reload the resume level
+    $skelGotoENDSEL = pop(@controlStack);  # reload the value for skelGotoENDSEL
     $a = pop(@controlStack);               # should be SELCount
     $b = pop(@controlStack);               # should be DOTCount
     $c = pop(@controlStack);               # should be DOFCount
@@ -3017,7 +3095,7 @@ sub displayDataHorizontally {
   } # end of for
   
   if ( $outputMode eq "HTTP" ) {                              # output it as a html table
-    $currentRowStyle = checkRowStyleSetting();
+    $currentRowStyle = checkRowStyleSetting('');
     outputLine("<tr $currentRowStyle> " . $tStr . " </tr>");                   # output the row information surrounded by the row tags
   }
   else {
@@ -3164,7 +3242,8 @@ sub headerise {
   #     1. Convert all _ to spaces
   #     2. Capitalise the first letter of every word
   #     3. Capitalise characters after periods
-  #     4. set all other letters to lower case
+  #     4. Capitalise characters after opening brackets
+  #     5. set all other letters to lower case
   #
   # Usage: headerise(<header>)
   # Returns: a string in header format
@@ -3173,16 +3252,20 @@ sub headerise {
   my $currentSubroutine = 'headerise';
   my $header = shift;                                            # establish the card being processed
   
+  if ( ! defined($header) ) { return ''; }  # shouldn't really happen as always shouldhave something
+  
   $header =~ s/_/ /g;       # convert '_' to spaces
   $header = lc($header);    # convert all chars to lower case
   my $cchar = '';
-  my $lchar = '';
+  my $lchar = ' ';
   
   for ( my $i = 0; $i <= length($header); $i++ ) { # loop through all of the characters 
     $cchar  = substr($header,$i,1);
     if ( $i == 0 ) { substr($header,$i,1) = uc($cchar); } # make the first char upper case
     else {
-      if ( ' .' =~ $lchar ) { substr($header,$i,1) = uc($cchar); } # first character so make it lower case
+      if ( ($lchar eq ' ') || 
+           ($lchar eq '(') || 
+           ($lchar eq '.') ) { substr($header,$i,1) = uc($cchar); } # first character so make it upper case
     }
     $lchar = $cchar;    # save it
   }  
@@ -3354,6 +3437,7 @@ sub processFDOF {
             outputLine("\n");                                           # just doa new line
           }
           setVariable('LASTFDOFCount',$skelFileStatus{$fileRef});
+          $selectCond = '';              # turn off any prevailing select conditions (they only last one use)
           
           undef $skelFileHandle{$fileRef};                       # undefine the file handle to free it up
           undef $skelFileStatus{$fileRef};                       # undefine the status entry
@@ -4069,7 +4153,7 @@ sub getTabValue {
   # -----------------------------------------------------------
   # Routine to get and process cursor values
   #
-  # Usage: getTabeValue(<fieldType>, <cursor value>, <cursor ref>, <column index>)
+  # Usage: getTabValue(<fieldType>, <cursor value>, <cursor ref>, <column index>)
   # Returns: a formatted cursor value
   # -----------------------------------------------------------  
   
@@ -4082,7 +4166,7 @@ sub getTabValue {
   my $formattedValue = "";      # string to be returned
   
   if ( isNumeric($fieldType) ) { # the fieldType is numeric - DB2 returns a numeric field type
-    if ( ($fieldType == -1) || ($fieldType == -4) || ($fieldType == -10) ) { # long field
+    if ( ($fieldType == -1) || ($fieldType == -4) || ($fieldType == -10) || ($fieldType == -99) ) { # long field
       if ( defined($fieldValue) ) {       # is the field defined? (if it isn't then perhaps it needs to be retrieved
         $formattedValue = $fieldValue;      # just move the data across
       }
@@ -5250,6 +5334,7 @@ sub processHeading {
 
   # is it HTML or TEXT?
   if ( $outputMode eq "HTTP" ) {  # output it as a html table
+    $FTABNumber++; 
     $tStr = "<table border=\"1\" id=\"FTAB$FTABNumber\"><tr>\n";
     # loop through the returned columns and generate the headers
     # Calculate the longest vertical header (note %vertHeaders identifies which are vertical)
@@ -5262,17 +5347,22 @@ sub processHeading {
       }
     }
     # put out the header lines .... loop through then and break vertical headers
-    for ( my $i=0; $i<$num_of_fields; $i++ ) { 
+    for ( my $i=0; $i<$num_of_fields; $i++ ) {
+      my $headerName = $skelCursor{'FTAB'}->{NAME}->[$i];
+      if ( $convertHeaders ) {
+        $headerName = headerise($headerName);
+      }
+    
       if ( defined($vertHeader{$i}) ) { # this header is vertical  
         # insert a break between every chracter
-        $tmpHeader = $skelCursor{'FTAB'}->{NAME}->[$i];
+        $tmpHeader = $headerName;
         $tmpHeader = substr(' ' x $maxHeaderHeight . $tmpHeader, -$maxHeaderHeight, $maxHeaderHeight);
         $tmpHeader =~ s/(.)/$1<BR>/g;
         $tmpHeader =~ s/<BR>$//g;
         $tStr .= "<th>$tmpHeader</th>";
       }
       else { # horizontal header
-        $tStr .= '<th>' . $skelCursor{'FTAB'}->{NAME}->[$i] . '</th>';
+        $tStr .= '<th>' . $headerName . '</th>';
       }
     }
     $tStr .= "</tr>\n";
@@ -5294,16 +5384,20 @@ sub processHeading {
     # put out the header lines .... loop through 
     for ( my $j = 0 ; $j < $maxHeaderHeight; $j++ ) { # loop the number of header lines there are
       for ( my $i=0; $i<$num_of_fields; $i++ ) { 
+        my $headerName = $skelCursor{'FTAB'}->{NAME}->[$i];
+        if ( $convertHeaders ) {
+          $headerName = headerise($headerName);
+        }
         if ( defined($vertHeader{$i}) ) { # this header is vertical  
           # print off the character at this line
-          $offset = $maxHeaderHeight - length($skelCursor{'FTAB'}->{NAME}->[$i]);
+          $offset = $maxHeaderHeight - length($headerName);
           if ( $offset >= $i ) { # characters to print
-            $tStr .= "!". substr($skelCursor{'FTAB'}->{NAME}->[$i],$i - $offset,1);
+            $tStr .= "!". substr($headerName,$i - $offset,1);
           }
         }
         else { # horizontal header
           if ( $j == $maxHeaderHeight - 1 ) { # last line
-            $tStr .= "!" . $skelCursor{'FTAB'}->{NAME}->[$i]
+            $tStr .= "!" . $headerName;
           }
         }
       }
@@ -5321,7 +5415,7 @@ sub checkCellStyleSetting {
   # Routine to check out if any special style should be invoked for this row
   #
   # Usage: checkStyleSetting()
-  # Returns: will return the applicable styl;e of a null string
+  # Returns: will return the applicable style or a null string
   # -----------------------------------------------------------  
   
   my $currentSubroutine = 'checkCellStyleSetting';
@@ -5359,6 +5453,9 @@ sub checkRowStyleSetting {
   
   my $currentSubroutine = 'checkRowStyleSetting';
   my $substitutedTest = '';
+  my $displayHeading = shift;   # only used for FVTAB processing to identify the row
+  
+  if ( $displayHeading ne '' ) { setVariable('FVTAB_ROW', $displayHeading) ; } 
   
   if ( ! keys %rowStyle ) { return '' } ; # if no tests then just return
   
@@ -5445,7 +5542,7 @@ sub processFTAB {
               displayDebug("indexTarget: $indexTarget: $fType",1,$currentSubroutine);
               $tStr = "";                                       # Initialise the output line 
               if ( $outputMode eq "HTTP" ) {                    # output it as a html table
-                $currentRowStyle = checkRowStyleSetting();      # see what style should be used
+                $currentRowStyle = checkRowStyleSetting('');      # see what style should be used
                 $tStr = "<tr $currentRowStyle>";    # set new table row tag
                 $FTAB_output_len += length($tStr);
               }
@@ -5957,11 +6054,17 @@ sub processFVTAB {
                 $skelTabValue = "";
                 $skelTabValue = getTabValue($fieldType, ${$skelCursorRow{'FVTAB'}}[$i], 'FVTAB',  $i);   # pass field type and the field across
   
+                my $headerName = $skelCursor{'FVTAB'}->{NAME}->[$i];
+                if ( $convertHeaders ) {
+                  $headerName = headerise($headerName);
+                }
                 if ( $outputMode eq "HTTP" ) {                          # output it as a html table cell
-                    outputLine("<tr><td>" . $skelCursor{'FVTAB'}->{NAME}->[$i] . "</td><td>" . $skelTabValue . "</td></tr>");
+                  $currentRowStyle = checkRowStyleSetting($headerName);
+                  $currentCellStyle = checkCellStyleSetting($headerName);
+                  outputLine("<tr $currentRowStyle ><td>" . $headerName . "</td><td $currentCellStyle>" . $skelTabValue . "</td></tr>");
                 }
                 else { # character field ... just normal left alignment
-                  outputLine("!" . $skelCursor{'FVTAB'}->{NAME}->[$i] . " !" . $skelTabValue);
+                  outputLine("!" . $headerName . " !" . $skelTabValue);
                 }
               } # end of for loop processing columns
               
@@ -6313,7 +6416,7 @@ sub processFILE {
   # a  )FILE card retrieves information about a file
   #
   # Usage: processFILE(<control card>)
-  # Returns: nothign but sets a number of internal variables
+  # Returns: nothing but sets a number of internal variables
   # -----------------------------------------------------------
 
   my $card = shift;             # will hold card type (not the full input card)
@@ -6323,8 +6426,12 @@ sub processFILE {
     if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
     
       my $filename = getToken($card);       
-      getFileInformation($filename, 'FILE');
-    
+      if ( -e "$filename" ) {
+        getFileInformation($filename, 'FILE');
+      }
+      else { # file doesn't exist
+        displayError("File \"$filename\" doesn't exist",$currentSubroutine);
+      }
     }
   }
   
@@ -6538,7 +6645,7 @@ sub processXDOT {
   if ( $currentLinePosition > length($card) ) { # something has gone wrong ....
     displayError(")XDOT doesn't have enough parameters )XDOT will be ignored",$currentSubroutine);
     $skelDOTSkipCards = "Yes";              # skip cards till we get to a )ENDDOT at the same level
-    my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
+    my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount,$skelGotoENDSEL,$skelSEL_resumeLevel));      # save counts on entry
     $skelDOTCount++;
     $skelDOT_resumeLevel = $skelDOTCount - 1;   # level at which processing will be resumed (will be tested for each )ENDDOT encountered)
   }
@@ -6583,7 +6690,7 @@ sub establishDOTLoop {
   if ( ( $skelSelSkipCards eq "No" ) ) { # not excluded because of a failed )SEL
     if ( ( $skelDOTSkipCards eq "No" ) ) { # not excluded because of a )DOT that returned zero rows
       setVariable('LASTDOTCount','0');               # initialise variable
-      my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
+      my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount,$skelGotoENDSEL,$skelSEL_resumeLevel));      # save counts on entry
       displayDebug("PUSHING onto stack - #entries $cnt",2,$currentSubroutine);
       displayDebug("Pushing control counts: \$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",1,$currentSubroutine);
       $skelDOTCount++;                     # Keep track of )DOT control cards encountered
@@ -6831,7 +6938,7 @@ sub processCELLSTYLE {
       $styleCount++;
       $styleCount = substr("000" . $styleCount,length($styleCount)); # pad out to 3 chars
       $cellStyle{$column}{$styleCount . $condition} = $style; 
-      displayDebug("Processed )CELLSTYLE ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",0,$currentSubroutine);
+      displayDebug("Processed )CELLSTYLE ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",1,$currentSubroutine);
       displayDebug("style = $style, column = $column, condition = $condition, styleCount = $styleCount",0,$currentSubroutine);
       return;
     }
@@ -6856,7 +6963,7 @@ sub processCELLSTYLE {
     $styleCount = substr("000" . $styleCount,length($styleCount)); # pad out to 3 chars
     $cellStyle{$column}{$styleCount . $condition} = $style; 
       
-    displayDebug("Processed )CELLSTYLE ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",0,$currentSubroutine);
+    displayDebug("Processed )CELLSTYLE ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",1,$currentSubroutine);
     displayDebug("style = $style, column = $column, condition = $condition",0,$currentSubroutine);
   }
   else {
@@ -6918,7 +7025,7 @@ sub processROWSTYLE {
       $rowStyle{$styleCount . $condition} = $style; 
     }
       
-    displayDebug("Processed )ROWSTYLE ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",0,$currentSubroutine);
+    displayDebug("Processed )ROWSTYLE ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",1,$currentSubroutine);
     displayDebug("style = $style, condition = $condition, styleCount = $styleCount",0,$currentSubroutine);
     
   }
@@ -7023,10 +7130,12 @@ sub processSEL {
   
   my $card = shift;  
 
-   if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
-    my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
+  displayDebug("SEL Entry counts (" . $currentSkelLine . ") : \$skelSELCount=$skelSELCount,\$skelSelSkipCards=$skelSelSkipCards,\$skelGotoENDSEL=$skelGotoENDSEL,\$skelSEL_resumeLevel=$skelSEL_resumeLevel",1,$currentSubroutine);
+
+  if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
+    my $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount,$skelGotoENDSEL,$skelSEL_resumeLevel));      # save counts on entry
     displayDebug("PUSHING onto stack - #entries $cnt",2,$currentSubroutine);
-    displayDebug("Pushing control counts: \$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",1,$currentSubroutine);
+    displayDebug("Pushing control counts: \$skelDOEXECCount=$skelDOEXECCount,\$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount,\$skelGotoENDSEL=$skelGotoENDSEL,\$skelSEL_resumeLevel=$skelSEL_resumeLevel",1,$currentSubroutine);
     $skelSELCount++;                                                      # keep track ofthe )SEL level we are at
     my $tmpI = trim(substr($card,5));                                     # tmpI now holds the condition
     displayDebug("Passing the following condition (SEL) : $tmpI",2,$currentSubroutine);
@@ -7048,6 +7157,8 @@ sub processSEL {
     displayDebug("Skipped: $card, Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
   }
 
+  displayDebug("SEL Exit counts (" . $currentSkelLine . ") : \$skelSELCount=$skelSELCount,\$skelSelSkipCards=$skelSelSkipCards,\$skelGotoENDSEL=$skelGotoENDSEL,\$skelSEL_resumeLevel=$skelSEL_resumeLevel",1,$currentSubroutine);
+
 } # end of processSEL
 
 sub processSELELSE { 
@@ -7065,50 +7176,57 @@ sub processSELELSE {
   my $card = shift;  
   my $tmpI ;                    # will contain the )SELELSE conditions
   
+  displayDebug("SELELSE Entry counts (" . $currentSkelLine . ") : \$skelSELCount=$skelSELCount,\$skelSelSkipCards=$skelSelSkipCards,\$skelGotoENDSEL=$skelGotoENDSEL,\$skelSEL_resumeLevel=$skelSEL_resumeLevel",1,$currentSubroutine);
+
   if ( ( $skelGotoENDSEL eq "No" ) ) {                         # no successful SEL/SELELSE yet so need to keep checking
     if ( ( $skelDOTSkipCards eq "No" ) ) {                     # not skipping cards because we are within a )DOT
       if ( ( $skelSelSkipCards eq "Yes" ) ) {                  # skipping SEL cards because previouse check failed so keep checking
-    if ( trim($card) eq ")SELELSE" ) {                     # the card has no conditions so is a catch all
-      if ( $skelSELCount == $skelSEL_resumeLevel + 1 ) {   # check to see if we are back in play doing checks
-        $skelSelSkipCards = "No";                          # process the cards in this )SELELSE group
-        $skelGotoENDSEL = "Yes";                           # after processing goto the )ENDSEL
-      }
-    }
-    else { # the SELELSE has a condition parameter
-          $tmpI = trim(substr($card,9));
-          displayDebug("Passing the following condition (SELELSE) : $tmpI",2,$currentSubroutine);
+        if ( trim($card) eq ")SELELSE" ) {                     # the card has no conditions so is a catch all
+          if ( $skelSELCount == $skelSEL_resumeLevel + 1 ) {   # check to see if we are back in play doing checks
+            $skelSelSkipCards = "No";                          # process the cards in this )SELELSE group
+            $skelGotoENDSEL = "Yes";                           # after processing goto the )ENDSEL
+          }
+        }
+        else { # the SELELSE has a condition parameter
+          if ( $skelSELCount == $skelSEL_resumeLevel + 1 ) {   # check to see if we are back in play doing checks
+            $tmpI = trim(substr($card,9));
+            displayDebug("Passing the following condition (SELELSE) : $tmpI",2,$currentSubroutine);
           
-          if ( processCondition($tmpI) ) { # returns 1 if condition is true
-            displayDebug("Condition evaluated to True",2,$currentSubroutine);
-        $skelSelSkipCards = "No";                        # process the cards in this )SELELSE group
-            $skelGotoENDSEL = "Yes";                         # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
+            if ( processCondition($tmpI) ) { # returns 1 if condition is true
+              displayDebug("Condition evaluated to True",2,$currentSubroutine);
+              $skelSelSkipCards = "No";                        # process the cards in this )SELELSE group
+              $skelGotoENDSEL = "Yes";                         # indicates that after the next ENDSEL we need to skip to the )ENDSEL for this )SEL                  
+            }
+            else { # evaluated false
+              displayDebug("Condition evaluated to False",2,$currentSubroutine);
+              $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
+#             $skelSEL_resumeLevel will be returned to its correct value in the processing of verifyControlCounts
+              $skelGotoENDSEL = "No";                                           # indicates that we haven't finished with this )SEL as yet - there may be a )SELELSE that will be true
+            }  
           }
-          else { # evaluated false
-            displayDebug("Condition evaluated to False",2,$currentSubroutine);
-            $skelSelSkipCards = "Yes";                                        # )sel is false so skip cards until the next )SELELSE or )ENDSEL
-            $skelSEL_resumeLevel = $skelSELCount - 1;                         # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
-            $skelGotoENDSEL = "No";                                           # indicates that we haven't finished with this )SEL as yet - there may be a )SELELSE that will be true
-          }
-    }
+        }
       }  
       else { # SELSkipCards was false which means that pervious SEL/SELELSE was satisfied
         $skelSelSkipCards = "Yes";                           # start skipping cards
-    $skelSEL_resumeLevel = $skelSELCount -1;             # set the resume level as we will be skipping cards now
+#       $skelSEL_resumeLevel will be returned to its correct value in the processing of verifyControlCounts
         if ( $skelSELCount == 0 ) { # if true then there is a problem as there is an unmatch )SELELSE
           displayError(")SELELSE without )SEL. Card will be ignored",$currentSubroutine);
           $skelSelSkipCards = "No";
-    }
+        }
         displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
       }
       displayDebug("Processed )SELELSE. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",1,$currentSubroutine);
     }
   }
   else { # keep skipping until we get to a )ENDSEL
-    $skelSEL_resumeLevel = $skelSELCount -1;     # dont think this is right          
+#    $skelSEL_resumeLevel will be returned to its correct value in the processing of verifyControlCounts
     $skelSelSkipCards = "Yes";                                # start skipping cards
+    $skelSEL_resumeLevel = $skelSELCount - 1;                 # indicator to show at what stack level the processing should restart (to copy with )SEL within )SEL
     displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
   }
   
+  displayDebug("SELELSE Exit counts (" . $currentSkelLine . ") : \$skelSELCount=$skelSELCount,\$skelSelSkipCards=$skelSelSkipCards,\$skelGotoENDSEL=$skelGotoENDSEL,\$skelSEL_resumeLevel=$skelSEL_resumeLevel",1,$currentSubroutine);
+
 } # end of processSELELSE
 
 sub processENDSEL { 
@@ -7124,11 +7242,13 @@ sub processENDSEL {
   
   my $card = shift;  
   
+  displayDebug("ENDSEL Entry counts (" . $currentSkelLine . ") : \$skelSELCount=$skelSELCount,\$skelSelSkipCards=$skelSelSkipCards,\$skelGotoENDSEL=$skelGotoENDSEL,\$skelSEL_resumeLevel=$skelSEL_resumeLevel",1,$currentSubroutine);
+
   displayDebug(")ENDSEL: \$skelDOTSkipCards=$skelDOTSkipCards, \$skelSelSkipCards=$skelSelSkipCards, \$skelSELCount=$skelSELCount, \$skelSEL_resumeLevel=$skelSEL_resumeLevel\n",1,$currentSubroutine);
   if ( $skelDOTSkipCards eq "No" ) {   # not skipping cards (caused when )DOT returns no rows .... we're waiting for a )ENDDOT
     if ( $skelSelSkipCards eq "No" ) { # not skipping cards because of a failed )SEL
       $skelSELCount--;                                                        # Reduce the count of unmatched )DOTs
-      $skelGotoENDSEL = "No";                                           # reset the goto )ENDSEL flag        
+#     $skelGotoENDSEL will be returned to its correct value in the processing of verifyControlCounts
       verifyControlCounts();
       displayDebug("Processed )ENDSEL ($currentSkelLine). Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",1,$currentSubroutine);
     }
@@ -7136,7 +7256,7 @@ sub processENDSEL {
       $skelSELCount--;
       if ( $skelSELCount == $skelSEL_resumeLevel ) {               # if we are at a matching )ENDSEL level                  
         $skelSelSkipCards = "No";                                         # stop skipping cards
-        $skelGotoENDSEL = "No";                                           # reset the goto )ENDSEL flag        
+#       $skelGotoENDSEL will be returned to its correct value in the processing of verifyControlCounts
         verifyControlCounts();
         displayDebug("Processed )ENDSEL ($currentSkelLine) .... Processing of cards resumed. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",1,$currentSubroutine);
       }
@@ -7148,6 +7268,9 @@ sub processENDSEL {
   else { # just adjust the count (as we would have incremented the count on the )SEL
     $skelSELCount--;
   }
+
+  displayDebug("ENDSEL Exit counts (" . $currentSkelLine . ") : \$skelSELCount=$skelSELCount,\$skelSelSkipCards=$skelSelSkipCards,\$skelGotoENDSEL=$skelGotoENDSEL,\$skelSEL_resumeLevel=$skelSEL_resumeLevel",1,$currentSubroutine);
+
 } # end of processENDSEL
 
 sub processASET { 
@@ -7314,7 +7437,7 @@ sub processSET {
           # NOTE: check for special values does not need to be checked here as special variables dont contain periods
           my $tempScope = $currentScope;      # save the current scope
           $currentScope = lc($scope);         # temporarily set the scope (scope is case insensitive)
-          $varValue = evaluateInfix(substituteVariables(trim($varValue)));
+          $varValue = evaluateInfix(substituteVariables(trim($varValue)),"$currentActiveSkel($currentSkelLine)");
           displayDebug("Result is = $varValue",1,$currentSubroutine);
           setVariable($tmpName, $varValue);
           $currentScope = $tempScope;         # return the scope back
@@ -7327,7 +7450,7 @@ sub processSET {
       
     }
 
-    $varValue = evaluateInfix(substituteVariables(trim($varValue)));
+    $varValue = evaluateInfix(substituteVariables(trim($varValue)),"$currentActiveSkel($currentSkelLine)");
     displayDebug("Result is = $varValue",1,$currentSubroutine);
     if ( ! checkForSpecialVariables($varName, $varValue) ) { # will return 0 if not special
       setVariable($varName,$varValue);    # set the variable
@@ -7463,7 +7586,7 @@ sub processDOEXEC {
     }
     displayDebug("Command entered ($card): $execCMD",1,$currentSubroutine);
 
-    $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
+    $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount,$skelGotoENDSEL,$skelSEL_resumeLevel));      # save counts on entry
     displayDebug("PUSHING onto stack - #entries $cnt",2,$currentSubroutine);
     displayDebug("Pushing control counts: \$skelDOEXECCount=$skelDOEXECCount,\$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",2,$currentSubroutine);
 
@@ -7641,7 +7764,7 @@ sub processDOF {
     my $lit = getToken($card);                               # should be the literal 'USING'
     my $CTLFileName = getToken($card);                       # (CTLFILENAME) The file name holding the control information describing the file
 
-    $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount));      # save counts on entry
+    $cnt = push(@controlStack,($skelDOEXECCount,$skelDOFCount,$skelDOTCount,$skelSELCount,$skelGotoENDSEL,$skelSEL_resumeLevel));      # save counts on entry
     displayDebug("PUSHING onto stack - #entries $cnt",2,$currentSubroutine);
     displayDebug("Pushing control counts: \$skelDOFCount=$skelDOFCount,\$skelDOTCount=$skelDOTCount,\$skelSELCount=$skelSELCount",2,$currentSubroutine);
 
@@ -7727,14 +7850,29 @@ sub processDOF {
         $skelFileStatus{$fileRef} = 0;                               # either it will stay 0 which will mean the file is empty or it will be incremented by readDataFileRecord
         # save the file handle
         $skelFileRecord = readDataFileRecord($skelFileHandle{$fileRef}, $fileRef, 'F');
-        if ( defined($skelFileRecord) )  { # not EOF
+        if ( defined($skelFileRecord) ) { # not EOF
           setDefinedVariablesForFile($fileRef, $skelFileRecord); # Set all of the variables
-        } #EOF
-        else {
-          displayError("File $skelFileRecord is empty. One pass through the loop will be performed.",$currentSubroutine);
-          undef $DOFLocation{$fileRef};                          # undefine the loop start pos to free it up
-          undef $skelFileHandle{$fileRef};                       # undefine the file handle to free it up
+          if ( $selectCond ne '' ) { # conditions exist so not all records being processed
+            my $recordNotOK = 1;
+            if ( evaluateCondition(substituteVariables($selectCond)) ) { # record selected for processing
+              $recordNotOK = 0;        # record is now OK to process
+            }
+            while ( defined($skelFileRecord) && ($recordNotOK) ) {
+              $skelFileRecord = readDataFileRecord($skelFileHandle{$fileRef}, $fileRef, 'F');
+              if ( defined($skelFileRecord) )  { # not EOF
+                setDefinedVariablesForFile($fileRef, $skelFileRecord); # Set all of the variables
+                if ( evaluateCondition(substituteVariables($selectCond)) ) { # record selected for processing
+                  $recordNotOK = 0;        # record is now OK to process
+                }
+              }
+            } 
+          }
         }
+      } 
+      if ( ! defined($skelFileRecord) ) { #EOF
+        displayError("File $skelFileRecord is empty. One pass through the loop will be performed.",$currentSubroutine);
+        undef $DOFLocation{$fileRef};                          # undefine the loop start pos to free it up
+        undef $skelFileHandle{$fileRef};                       # undefine the file handle to free it up
       }
     }
     else { # control file wasn't loaded so nothing can be done
@@ -7925,12 +8063,33 @@ sub processENDDOF {
     else { # file was opened and used the last time data was read from it ..... try and read more data
       displayDebug("File $currentFileRef  being read",2,$currentSubroutine);
       my $skelFileRecord = readDataFileRecord($skelFileHandle{$currentFileRef}, $currentFileRef, 'F');
+
+      if (  defined($skelFileRecord) ) { # not EOF so process the record (otherwise just let it flow through)
+        setDefinedVariablesForFile($currentFileRef, $skelFileRecord); # Set all of the variables
+      
+        if ( $selectCond ne '' ) { # conditions exist so not all records being processed
+          my $recordNotOK = 1;
+          if ( evaluateCondition(substituteVariables($selectCond)) ) { # record selected for processing
+            $recordNotOK = 0;        # record is now OK to process
+          }
+          while ( defined($skelFileRecord) && ($recordNotOK) ) {
+            $skelFileRecord = readDataFileRecord($skelFileHandle{$currentFileRef}, $currentFileRef, 'F');
+            if ( defined($skelFileRecord) )  { # not EOF
+              setDefinedVariablesForFile($currentFileRef, $skelFileRecord); # Set all of the variables
+              if ( evaluateCondition(substituteVariables($selectCond)) ) { # record selected for processing
+                $recordNotOK = 0;        # record is now OK to process
+              }
+            }
+          } 
+        }
+      }
+      
+      # need to check again here in case the while loop has found the end of file
       if ( defined($skelFileRecord) ) { # not EOF so process the record (otherwise just let it flow through)
         displayDebug("Record returned from file $currentFileRef ",2,$currentSubroutine);
-        setDefinedVariablesForFile($currentFileRef, $skelFileRecord);            # Set all of the variables
         $currentSkelLine = $DOFLocation{$currentFileRef} ;
       }
-      else { # end of file so close up shop
+      else { # EOF so time to tidy up
         displayDebug("No more records in $currentFileRef",2,$currentSubroutine);
         undef $skelFileStatus{$currentFileRef} ;                 # clear out the file status
         if ( defined( $DOFLocation{$currentFileRef}) )    { undef $DOFLocation{$currentFileRef}; }
@@ -7943,7 +8102,7 @@ sub processENDDOF {
         $skelDOFCount--;                                           # decrement )DOF count
         displayDebug("Processed )ENDDOF. DOF Count = $skelDOFCount",1,$currentSubroutine);
         verifyControlCounts();
-    
+        $selectCond = '';       # turn off any enabled selection condition
       }
     }
   }
@@ -8057,10 +8216,10 @@ sub processIMBED {
   $calcDebugModules = $skelDebugModules;
 
   if ( $currentLinePosition <= length($card) ) { # there looks to be a 2nd parameter
-    $newSkel = evaluateInfix(trim(substr($card,$currentLinePosition)));       # set the debug level to the evaluated string provided on the )TRACE card
+    $newSkel = evaluateInfix(trim(substr($card,$currentLinePosition)),"$currentActiveSkel($currentSkelLine)");       # set the debug level to the evaluated string provided on the )TRACE card
   }    
   if ( $newSkel eq '' ) { # no variable scope was supplied (we assume)
-    $newSkel = evaluateInfix(trim(trim(substr($card,7))));
+    $newSkel = evaluateInfix(trim(trim(substr($card,7))),"$currentActiveSkel($currentSkelLine)");
     $scope = $currentScope; # default the scope to the current scope
   }
   if ( trim($newSkel) eq '' ) { return; }                                   # if the skeleton evaluates to blank then just ignore the statement
@@ -8082,7 +8241,7 @@ sub processTRACE {
   my $card = shift;                                                         # establish the card being processed
   
   my $depth = push(@traceLevelStack,$skelDebugLevel);                       # save off the current level
-  $skelDebugLevel = evaluateInfix(trim(substr($card,7)));                   # set the debug level to the evaluated string provided on the )TRACE card
+  $skelDebugLevel = evaluateInfix(trim(substr($card,7)),"$currentActiveSkel($currentSkelLine)");                   # set the debug level to the evaluated string provided on the )TRACE card
   setVariable('traceLevel',$skelDebugLevel);                                # update the internal variable
   displayDebug("Trace level set to $skelDebugLevel",0,$currentSubroutine);
 
@@ -8241,7 +8400,7 @@ sub processSKELVERS {
   # -----------------------------------------------------------
   # Routine to process the SKELVERS statemnent. The format of the statement is:
   #
-  # )SKELVERS  $Id: processSkeleton.pm,v 1.127 2018/12/14 04:09:41 db2admin Exp db2admin $
+  # )SKELVERS  $Id: processSkeleton.pm,v 1.144 2019/07/22 02:32:12 db2admin Exp db2admin $
   #
   # Usage: processVERSION(<control card>)
   # Returns: sets the internal variable skelVers
@@ -8321,26 +8480,47 @@ sub processLOGOFF {
   if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
     my $DBConnection = getToken($card);                 # Literal that defines the connection to close
     
-    if ( ! defined($skelConnection{$DBConnection}) ) { #  Connection not found
-      displayError("Connection $DBConnection not found so )LOGOFF card ignored");
-      return;
-    }
-    # Connection should be closed
-    $skelConnection{$DBConnection}->disconnect;     # Close the DB connection
+    if ( defined($DBConnection) && ( $DBConnection ne '' ) ) { # a connection ID was supplied 
+      if ( ! defined($skelConnection{$DBConnection}) ) { #  Connection not found
+        displayError("Connection $DBConnection not found so )LOGOFF card ignored");
+        return;
+      }
+      # Connection should be closed
+      $skelConnection{$DBConnection}->disconnect;     # Close the DB connection
 
-    if ( defined($skelConnection{$DBConnection}->errstr) ) {
-      displayError("Disconnect Error: $skelConnection{$DBConnection}->errstr",$currentSubroutine);
+      if ( defined($skelConnection{$DBConnection}->errstr) ) {
+        displayError("Disconnect Error: $skelConnection{$DBConnection}->errstr",$currentSubroutine);
+      }
+      elsif ( defined($DBI::errstr) ) {
+        if ( $DBI::errstr ne '' ) {
+          displayError ("Disconnect Error: $DBI::errstr",$currentSubroutine);
+        }
+      }
+      else {
+        delete $skelConnection{$DBConnection};    # remove the connection reference
+      }
+
+      displayDebug("Connection $DBConnection has now been closed",2,$currentSubroutine);
     }
-    elsif ( defined($DBI::errstr) ) {
-      if ( $DBI::errstr ne '' ) {
-        displayError ("Disconnect Error: $DBI::errstr",$currentSubroutine);
+    else { # no connection supplied so close all open connections .....
+      foreach my $conn ( keys %skelConnection ) { # loop through the connections ....
+        # Connection should be closed
+        $skelConnection{$conn}->disconnect;     # Close the DB connection
+
+        if ( defined($skelConnection{$conn}->errstr) ) {  
+          displayError("Disconnect Error for $conn: $skelConnection{$conn}->errstr",$currentSubroutine);
+        }
+        elsif ( defined($DBI::errstr) ) {
+          if ( $DBI::errstr ne '' ) {
+            displayError ("Disconnect Error for $conn: $DBI::errstr",$currentSubroutine);
+          }
+        }
+        else {
+          delete $skelConnection{$conn};    # remove the connection reference
+        }
+        displayDebug("Connection $conn has now been closed",2,$currentSubroutine);
       }
     }
-    else {
-      delete $skelConnection{$DBConnection};    # remove the connection reference
-    }
-
-    displayDebug("Connection $DBConnection has now been closed",2,$currentSubroutine);
   }
   else {
     displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2);
@@ -8413,7 +8593,7 @@ sub processLOGON {
     }
     else { # all ok to proceed ....
       if ( $skelConnection{$skelCurrentConnection} = DBI->connect ("DBI:$DBType:$DBName", "$DBUser", "$DBPwd") ) { # A returned value means that all is OK
-        $skelConnection{$skelCurrentConnection}->{LongReadLen} = 0; # dont ever bring back data automatically for long fields [only used with BLOB_READ] 
+        $skelConnection{$skelCurrentConnection}->{LongReadLen} = 0; # dont ever bring back data automatically for long fields [only used with blob_read] 
         displayDebug("Connection to $DBName using $DBType and user $DBUser was completed successfully",2,$currentSubroutine);
         # ---------  if blob_read doesn't exist ------------------------------
         #$skelConnection{$skelCurrentConnection}->{LongReadLen} = 5000; # limits BLOB reads to 5000 bytes
@@ -8772,7 +8952,7 @@ sub processFunction {
   #     SPLIT            - returns the xth value in the string delimted by the supplied delimiter ('' if not found)
   #                        )FUNC SPLIT RET = <string to split> <string to be split on> [<entry to return>]
   #     INSTR            - returns the position of one string in another (-1 if not found)
-  #                        )FUNC INSTR RET = <string to search for> <string to be searched> [<start pos|OCC:occurence>]
+  #                        )FUNC INSTR RET = <string to search for> <string to be searched> [<start pos|OCC:occurrence>]
   #     LEFT             - return a number of characters from the left hand side of a string
   #     RIGHT            - return a number of characters from the right hand side of a string
   #     MID              - return a number of characters from the middle of a a string
@@ -8786,6 +8966,12 @@ sub processFunction {
   #     WEBSAFE          - Returns a string with all special characters converted to HTML equivalents
   #     LOWER            - Returns the string transformed to all lower case
   #     UPPER            - Returns the string transformed to all upper case
+  #
+  #     TIMEDIFF         - difference in minutes between 2 timestamps
+  #     DISPLAYDIFF      - Difference between 2 timestamps converted to a human readable form
+  #     DISPLAYMIN       - Takes mins and returns a display variable of days/hrs/mins
+  #     TIMEADJ          - varies a timestamp by a number of minutes
+  #     REFORMATTS       - Converts 'Sep 17, 2017 6:00:07 PM' to standard timestamp format
   #     
   # Usage: processFunction(<Function>,<Parameters>)
   # Returns: the result of the function applied to the parameters
@@ -8799,6 +8985,8 @@ sub processFunction {
   my $i;
 
   displayDebug("Function $function will process the following parms: $funcParm",2,$currentSubroutine);
+  
+  $currentSubroutine .= " $function"; # add in the function name for debug purposes
 
   if ( uc($function) eq "INT" ) { # INT function
     return int($funcParm);
@@ -8878,7 +9066,7 @@ sub processFunction {
   elsif ( uc($function) eq "INSTR" ) { # instr function
     my $srchString = getToken($card);                       # search string
     my $baseString = getToken($card);                       # string to be searched
-    my $thirdParm = getToken($card);                        # third parameter ; either starting pos or OCCxxx where then it becomes the string occurence
+    my $thirdParm = getToken($card);                        # third parameter ; either starting pos or OCCxxx where then it becomes the string occurrence
     
     if ( ($srchString =~ /^'/) || ($srchString =~ /^"/) ) {     # it is a quoted string ....
       $srchString = substr($srchString,1,length($srchString)-2); # strip off the quotes
@@ -8891,20 +9079,20 @@ sub processFunction {
     # INSTR MUST have at least 2 parms 
     
     if ( $baseString eq "" ) { # 2 parameters haven't been supplied
-      displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurence]\nNote: It MUST have 2 parameters - Function will return -1",$currentSubroutine);
+      displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurrence]\nNote: It MUST have 2 parameters - Function will return -1",$currentSubroutine);
       return -1;
     }
     
     if ( $thirdParm eq '' ) { $thirdParm = 0 } # set a default value of zero for the third parm
-    elsif ( ! isNumeric($thirdParm) ) { # parameter is not numeric so may be occurence 
-      if ( uc(substr( $thirdParm . "   ", 0,4)) eq "OCC:" ) { # check if we are looking for an occurence value
+    elsif ( ! isNumeric($thirdParm) ) { # parameter is not numeric so may be occurrence 
+      if ( uc(substr( $thirdParm . "   ", 0,4)) eq "OCC:" ) { # check if we are looking for an occurrence value
         my $occ = substr($thirdParm,4);
         if ( ! isNumeric($occ) ) {
-          displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurence]\nNote: Third parm must be either numeric or start with OCC: - 3rd parm will be assumed 1",$currentSubroutine);
+          displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurrence]\nNote: Third parm must be either numeric or start with OCC: - 3rd parm will be assumed 1",$currentSubroutine);
           $thirdParm = 0;
         }
-        else { # we need to find an occurence of the string
-          my $spot = index($baseString,$srchString,0); # first occurence
+        else { # we need to find an occurrence of the string
+          my $spot = index($baseString,$srchString,0); # first occurrence
           my $occCount = 1;
           while ( ($occCount < $occ) & ( $spot > -1 ) ) { # still more searching to do
         $spot = index($baseString,$srchString,$spot+1); # find the next entry
@@ -8914,7 +9102,7 @@ sub processFunction {
     }
       }
       else { # not numeric and not OCC: so ignore it
-        displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurence]\nNote: Third parm must be either numeric or start with OCC: - 3rd parm will be assumed 0",$currentSubroutine);
+        displayError("INSTR function format is:\n)FUNC INSTR xxx = <search string> <string> [startpos|OCC:occurrence]\nNote: Third parm must be either numeric or start with OCC: - 3rd parm will be assumed 0",$currentSubroutine);
         $thirdParm = 0;
       }
     }
@@ -8949,24 +9137,24 @@ sub processFunction {
     # SPLIT MUST have at least 2 parms
 
     if ( $strDelim eq "" ) { # 2 parameters haven't been supplied
-      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: It MUST have 2 parameters - Function will return ''",$currentSubroutine);
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurrence] [max elements]\nNote: It MUST have 2 parameters - Function will return ''",$currentSubroutine);
       return '';
     }
 
-    if ( $thirdParm eq '' ) { $thirdParm = 0 } # set a default value of zero for the occurence
+    if ( $thirdParm eq '' ) { $thirdParm = 0 } # set a default value of zero for the occurrence
 
     if ( ! isNumeric($thirdParm) ) {
-      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: If supplied, the third parameter must be numeric - it will be assumed to be 0",$currentSubroutine);
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurrence] [max elements]\nNote: If supplied, the third parameter must be numeric - it will be assumed to be 0",$currentSubroutine);
       $thirdParm = 0;
     }
 
     if ( ( $fourthParm ne '' ) && ( ! isNumeric($fourthParm)) ) {
-      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: If supplied, the fourth parameter must be numeric - it will be assumed to be missing",$currentSubroutine);
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurrence] [max elements]\nNote: If supplied, the fourth parameter must be numeric - it will be assumed to be missing",$currentSubroutine);
       $fourthParm = '';
     }
     elsif ( (isNumeric($fourthParm)) && ( $thirdParm >= $fourthParm) ) { # make sure that the entry is less than the number of entries
       $fourthParm = $thirdParm + 1;
-      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurence] [max elements]\nNote: If supplied, the 4th Parm must be bigger than the 3rd Parm - it will be assumed to be $fourthParm",$currentSubroutine);
+      displayError("SPLIT function format is:\n)FUNC SPLIT xxx = <base string> <delimiter> [occurrence] [max elements]\nNote: If supplied, the 4th Parm must be bigger than the 3rd Parm - it will be assumed to be $fourthParm",$currentSubroutine);
     }
 
     displayDebug("strDelim=$strDelim, baseString=$baseString, thirdParm=$thirdParm, fourthParm=$fourthParm",2,$currentSubroutine);
@@ -9219,6 +9407,129 @@ sub processFunction {
     return $baseString;                         # 
 
   } # end of WEBSAFE function
+  elsif ( uc($function) eq "TIMEDIFF" ) { # TIMEDIFF function
+    my $time1 = getToken($card);                         # timestamp 1
+    my $time2 = getToken($card);                         # timestamp 2
+
+    # TIMEDIFF MUST have at least 1 parm
+
+    if ( $time1 eq "" ) { # no parameters have been displayed
+      displayError("TIMEDIFF function format is:\n)FUNC TIMEDIFF xxx = <TIMESTAMP string> [<TIMESTAMP string>]\nNote: It MUST have at least 1 parameter - Function will return 0",$currentSubroutine);
+      return '0';
+    }
+    
+    if ( $time2 eq '' ) { # second parameter not set - default it to current timestamp
+      $time2 = getCurrentTimestamp();
+    }
+
+    displayDebug("TS1=$time1, TS2=$time2",2,$currentSubroutine);
+
+    return timeDiff($time1, $time2);   # return the time difference
+    
+  }  # end of TIMEDIFF function
+  elsif ( uc($function) eq "DISPLAYDIFF" ) { # DISPLAYDIFF function
+    my $time1 = getToken($card);                         # timestamp 1
+    my $time2 = getToken($card);                         # timestamp 2
+
+    # DISPLAYDIFF MUST have at least 1 parm
+
+    if ( $time1 eq "" ) { # no parameters have been displayed
+      displayError("DISPLAYDIFF function format is:\n)FUNC DISPLAYDIFF xxx = <TIMESTAMP string> [<TIMESTAMP string>]\nNote: It MUST have at least 1 parameter - Function will return 0",$currentSubroutine);
+      return '0';
+    }
+    
+    if ( $time2 eq '' ) { # second parameter not set - default it to current timestamp
+      $time2 = getCurrentTimestamp();
+    }
+
+    displayDebug("TS1=$time1, TS2=$time2",2,$currentSubroutine);
+
+    return displayMinutes(timeDiff($time1, $time2));   # return the time difference as a minutes string
+    
+  }  # end of DISPLAYDIFF function
+  elsif ( uc($function) eq "TIMEADJ" ) { # TIMEADJ function
+    my $time1 = getToken($card);                         # timestamp 1
+    my $mins = getToken($card);                          # adjustment minutes
+    
+    # TIMEADJ MUST have at least 1 parm
+     
+
+    if ( $time1 eq "" ) { # no parameters have been displayed
+      displayError("TIMEADJ function format is:\n)FUNC TIMEADJ xxx = <TIMESTAMP string> [<minutes>]\nNote: It MUST have at least 1 parameter - Function will return current timestamp",$currentSubroutine);
+      return getCurrentTimestamp();
+    }
+    
+    if ( $mins eq '' ) { # second parameter not set - just return the first parameter
+      return $time1;
+    }
+
+    displayDebug("TS1=$time1, Mins=$mins",2,$currentSubroutine);
+
+    return timeAdj($time1, $mins);   # return the time difference
+    
+  }  # end of TIMEADJ function
+  elsif ( uc($function) eq "DATEADD" ) { # DateAdd function
+    my $date1 = getToken($card);                         # timestamp 1
+    my $dur = getToken($card);                           # duration
+    
+    # DATEADJ MUST have at least 1 parm
+
+    if ( $date1 eq "" ) { # no parameters have been displayed
+      displayError("DATEADJ function format is:\n)FUNC DATEADJ xxx = <date string> [<duration>]\nNote: It MUST have at least 1 parameter - Function will return current timestamp",$currentSubroutine);
+      return getCurrentTimestamp();
+    }
+    
+    if ( $dur eq '' ) { # second parameter not set - just return the first parameter
+      return $date1;
+    }
+
+    my ($isDuration, $duration) = processDuration($dur, 'T');
+    displayDebug("DATE=$date1, Dur=$dur, TS Dur=$duration",2,$currentSubroutine);
+    if ( ! $isDuration ) { # not a real duration
+      displayError("Duration is invalid: $dur\nDATEADJ function format is:\n)FUNC DATEADJ xxx = <TIMESTAMP string> [<minutes>]\nNote: It MUST have at least 1 parameter - Function will return current timestamp",$currentSubroutine);
+      return $date1;
+    }
+
+    if ( (length($dur) > 1) && (substr($dur,0,1) eq '-') ) { # looks like it is a negative duration
+      return performDateSubtraction($date1, $duration);   # return the date adjustment
+    }
+    else {
+      return performDateAddition($date1, $duration);   # return the date adjustment
+    }
+    
+  }  # end of DATEADD function
+  elsif ( uc($function) eq "DISPLAYMIN" ) { # DISPLAYMIN function
+    my $mins = getToken($card);                          # number of minutes to be formatted
+    
+    # DISPLAYMIN MUST have at least 1 parm
+     
+
+    if ( $mins eq "" ) { # no parameters have been displayed
+      displayError("DISPLAYMIN function format is:\n)FUNC DISPLAYMIN xxx = <TIMESTAMP string>\nNote: It MUST have at least 1 parameter - Function will return 'o mins'",$currentSubroutine);
+      return '0 mins';
+    }
+    
+    displayDebug("mins=$mins",2,$currentSubroutine);
+
+    return displayMinutes ($mins);   # return the formatted minutes
+    
+  }  # end of DISPLAYMIN function
+  elsif ( uc($function) eq "REFORMATTS" ) { # REFORMATTS function
+    my $TS = getToken($card);               # timestamp to be reformatted (Format: Sep 17, 2017 6:00:07 PM)
+    
+    # REFORMATTS MUST have at least 1 parm
+     
+
+    if ( $TS eq "" ) { # no parameters have been displayed
+      displayError("REFORMATTS function format is:\n)FUNC REFORMATTS xxx = <Alt TIMESTAMP string>\nNote: It MUST have at least 1 parameter - Function will return nothing",$currentSubroutine);
+      return '';
+    }
+    
+    displayDebug("TS=$TS",2,$currentSubroutine);
+
+    return convertToTimestamp($TS);   # return the re-formatted timestamp
+    
+  }  # end of REFORMATTS function
 
   displayError("Function $function unknown. Known functions are:\n     INT, TRIM, LTRIM, RTRIM, LEN, SPLIT, INSTR, LEFT, RIGHT, MID, REMOVECRLF, REMOVEWHITESPACE, FORMATSQL,\n     GDATE, JDATE, PAD\nFunction will return nothing",$currentSubroutine);
   return "";
@@ -9312,7 +9623,7 @@ sub adjustUnsetLengthFields {
 
   } # end of loop through ctl lines
 
-}
+} # end of adjustUnsetLengthFields
 
 sub setDefinedVariablesForFile {
   # -----------------------------------------------------------
@@ -9600,7 +9911,7 @@ sub loadFileCTL {
           }
         }
       }
-      else { # length/occurence not defined
+      else { # length/occurrence not defined
         if ( uc($ctlVals[0]) eq "DELIMITED" ) { # if not provided then there is a default value for DELIMITED entries ...
           if ( $currentFieldLoc == -1 ) { # there is no current value set
             $tmpk = 0;    # start at position 0
@@ -9840,7 +10151,7 @@ sub loadInlineFileCTL {
         }
       }
     }
-    else { # length/occurence not defined
+    else { # length/occurrence not defined
       if ( uc($ctlVals[0]) eq "DELIMITED" ) { # if not provided then there is a default value for DELIMITED entries ...
         if ( $currentFieldLoc == -1 ) { # there is no current value set
           $tmpk = 0;    # start at position 0
@@ -10095,6 +10406,9 @@ sub processSkeleton {
   $skelDOTCount = 0;                     # initialise the )DOT/)ENDDOT balancing count
   $skelSELCount = 0;                     # initialise the )SEL/)ENDSEL balancing count
   @controlStack = ();                    # initialise the stack controlling )SEL and )DOT interactions
+  
+  # align the error streams 
+  $calc_errorToSTDOUT = $pskl_errorToSTDOUT; 
   
   my $currentSubroutine = 'processSkeleton'; 
 
