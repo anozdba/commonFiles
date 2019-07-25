@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------
 # calculator.pm
 #
-# $Id: calculator.pm,v 1.14 2018/05/29 04:22:42 db2admin Exp db2admin $
+# $Id: calculator.pm,v 1.22 2019/07/16 23:52:27 db2admin Exp db2admin $
 #
 # Description:
 # Package to evaluate a infix calculation string
@@ -17,6 +17,45 @@
 #
 # ChangeLog:
 # $Log: calculator.pm,v $
+# Revision 1.22  2019/07/16 23:52:27  db2admin
+# move debug messages to STDERR
+#
+# Revision 1.21  2019/02/13 05:00:07  db2admin
+# 1. Timestamp subtraction now allows duration, time and timestamp subtraction
+# 2. Added in extra tests in the calcTestRoutine to test new functionality
+#
+# Revision 1.20  2019/02/07 04:17:33  db2admin
+# remove timeAdd from the use list as the module is no longer provided
+#
+# Revision 1.19  2019/02/05 22:46:56  db2admin
+# 1. move performDateAddition,performDateSubtraction,performTimestampAddition and performTimestampSubtraction to commonFunctions.pm
+# 2. correct bug in subtraction for non-date/timestamps
+# 3. remove myDate and myTime and replace with getCurrentTimestamp
+# 4. remove isNumeric and replace with the commonFunctions.pm version
+# 5. remove isTimestamp as it is not used
+#
+# Revision 1.18  2019/02/02 05:02:53  db2admin
+# 1. Add in timestamp/date subtraction
+# 2. extend calTestRoutine to include tests for timestamp/date subtractio
+#
+# Revision 1.17  2019/02/01 02:41:41  db2admin
+# 1. change all currentSubroutine to currentRoutine
+# 2. add in performDateAddition fro doing date addition
+# 3. add in performTimestampAddition for doing timestamp addition
+# 4. modify addition section to validate and cope with date/timestamp addition
+# 5. alter the way that the test routines to run are selected
+#
+# Revision 1.16  2019/01/25 03:20:00  db2admin
+# 1. adjust commonFunctions.pm parameter importing to match module definition
+# 2. preliminary changes fro timestamp arithmetic
+#
+# Revision 1.15  2019/01/22 23:21:19  db2admin
+# 1. Add in a displayERRROR routine to standardise output
+# 2. Allow the passing of a calling routine token to be displayed alongside the error
+#    to simplify debugging
+# 3. Add in parameter to switch errors between STDOUT and STDERR
+# 4. Display the current equation being processed when errors are encountered.
+#
 # Revision 1.14  2018/05/29 04:22:42  db2admin
 # modify code to return an error rather than divide by zero
 #
@@ -52,7 +91,7 @@
 # Revision 1.5  2015/10/25 21:15:08  db2admin
 # add in comparison operators GT, GE, LT, LE, EQ and NE
 #
-# Revision 1.4  2015/09/28 01:17:56  db2admin
+# Revision 1.4  2015/09/28 01:wait:17:56  db2admin
 # correct issue when there is only one thing on the stack
 #
 # Revision 1.3  2015/04/15 22:33:29  db2admin
@@ -70,11 +109,13 @@
 package calculator;
 
 use strict;
-our $testRoutines = 0;   # variable containing which tests to run in the testRoutine sub
+
+use commonFunctions qw(trim ltrim rtrim commonVersion getOpt isNumeric isValidDate isValidTimestamp isValidTimestampFormat myDate $getOpt_web $getOpt_optName $getOpt_min_match $getOpt_optValue getOpt_form @myDate_ReturnDesc $cF_debugLevel $getOpt_calledBy $parmSeparators processDirectory $maxDepth $fileCnt $dirCnt localDateTime displayMinutes timeDiff  timeAdj convertToTimestamp getCurrentTimestamp isValidDate processDuration performDateAddition performDateSubtraction performTimestampAddition performTimestampSubtraction isValidTime performTimeAddition performTimeSubtraction convertTimestampDuration);
+
 # export parameters ....
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(evaluateInfix calcVersion $calcDebugLevel $calcFunctions $calcOperators %opPrecedence calcTestRoutine $calcTestRoutines $calcDebugModules $calcOperatorsAlpha) ;
+our @EXPORT_OK = qw(evaluateInfix calcVersion $calcDebugLevel $calcFunctions $calcOperators %opPrecedence calcTestRoutine $calcTestRoutines $calcDebugModules $calcOperatorsAlpha $calc_errorToSTDOUT) ;
 
 our $calcDebugModules = 'All';
 our $calcDebugLevel = 0;
@@ -84,6 +125,7 @@ our $possibleUnaryOperators = ' ! - + ';                                        
 our $unaryOperators = ' ! U- U+ ';                                              # unary operators (i.e only one operand). Note u- is - and u+ is + (adjusted)
 our $calcOperators = ' + - * / % || > >= < <= <> = == =~ ! ' . $calcOperatorsAlpha;  # list of strings to be treated as token terminators (can be modified)
 our %opPrecedence;
+our $calc_errorToSTDOUT = 0;
 
 # initialise precedence
 $opPrecedence{'OR'} = 1;
@@ -121,14 +163,19 @@ my @output ; # output stack
 my @operandStack ; # operand stack used when evaluating reverse polish expression
 my $currentTokenPosition = -1; # current parsing position in string being evaluated
 my $currentTokenIsString = 0; # current token type
+my $sourceLiteral = ''; # source literal to be used in error messages
+my $infixString = '';       # the statement being processed
 
 sub calcTestRoutine {
   # -----------------------------------------------------------
   # routine to test the subroutines/functions in this package
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'calcTestRoutine';
+  my $currentRoutine = 'calcTestRoutine';
+  $calcTestRoutines = shift;
   my $testString = "";
+  my $test = '';
+  my $expectedRes = '';
 
   print "Starting Calulator test (" . oct($calcTestRoutines) . ")\n";
 
@@ -179,42 +226,165 @@ sub calcTestRoutine {
     else { print "OK   - returned $result\n"; }
   }
 
+  if ( oct($calcTestRoutines) & oct('0b000000000100000') ) { # testing date/time arithmertic
+
+    print "\n***** Testing Date/Time arithmetic tests ....\n";
+    print "***** Simple timestamp/durations arithmetic .... \n\n";
+
+    $test = "'2018-12-01 23:49:01' + '22 minutes'";
+    $expectedRes = "2018-12-02 00:11:01";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-02-28 23:49:01' + '22 minutes 4 days 1 year'";
+    $expectedRes = "2017-03-04 00:11:01";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2018-12-01 00:19:01' + '-22 minutes'";
+    $expectedRes = "2018-12-01 00:41:01";
+    print "Testing : \"$test\" ( Testing the ignoring of negative values in duration - answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-03-01 00:19:01' - '22 minutes 4 days 1 year'";
+    $expectedRes = "2015-02-25 23:57:01";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2018-12-01 00:19:01' - '22 minutes'";
+    $expectedRes = "2018-11-30 23:57:01";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    print "\n***** Simple date/durations arithmetic .... \n\n";
+
+    $test = "'2016-02-28' + '4 days 1 year'";
+    $expectedRes = "2017-03-03";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-02-28' + '4 days 1 year +6 minute'";
+    $expectedRes = "2017-03-03 00:06:00";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-03-01' - '4 days 1 year'";
+    $expectedRes = "2015-02-26";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-03-01' - '4 days 1 year 6 minute'";
+    $expectedRes = "2015-02-25 23:54:00";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    print "\n***** Simple date/durations arithmetic .... \n\n";
+
+    $test = "'23:23:04' + '1 hour 58 seconds'";
+    $expectedRes = "0000-00-01 00:24:02";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    print "\n***** Timestamp subtraction .... \n\n";
+
+    $test = "'2016-03-01 00:19:01' - '2016-02-27 00:18:01'";
+    $expectedRes = "4321";
+    print "Testing : \"$test\" converted to minutes (answer should be '$expectedRes')\n";
+    my $result = convertTimestampDuration(evaluateInfix( $test ),'M');
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-03-01 00:19:01' - '2016-02-27 00:18:01'";
+    $expectedRes = "0000-00-03 00:01:00";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-03-01 00:19:01' - '0000-00-03 00:01:00'";
+    $expectedRes = "2016-02-27 00:18:01";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-03-01 00:19:01' - '00:22:05'";
+    $expectedRes = "2016-02-29 23:56:56";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    print "\n***** Time Arithmetic .... \n\n";
+
+    $test = "'09:23:04' - '10 hours 6 minute'";
+    $expectedRes = "0000-00-01 23:17:04";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'09:23:04' - '10:25:06'";
+    $expectedRes = "0000-00-01 22:57:58";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'23:23:04' + '01:39:57'";
+    $expectedRes = "0000-00-01 01:03:01";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    print "\n***** Date Subtraction .... \n\n";
+
+    $test = "'2019-09-18' - '2018-09-18'";
+    $expectedRes = "365";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-09-18' - '2015-09-18'";
+    $expectedRes = "366";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+    $test = "'2016-09-18' - '2016-07-18'";
+    $expectedRes = "62";
+    print "Testing : \"$test\" (answer should be '$expectedRes')\n";
+    my $result = evaluateInfix( $test );
+    if ( $result ne $expectedRes ) { print "FAIL - returned $result when the answer should have been '$expectedRes')\n"; }
+    else { print "OK   - returned $result\n"; }
+
+  }
+
  
 } # end of calcTestRoutine
-
-sub getDate {
-  # -----------------------------------------------------------
-  #  Routine to return a formatted Date in YYYY.MM.DD format
-  #
-  # Usage: getDate()
-  # Returns: YYYY.MM.DD
-  # -----------------------------------------------------------
-
-  my $currentSubroutine = 'getDate';
-  my ($second, $minute, $hour, $dayOfMonth, $month, $yearOffset, $dayOfWeek, $dayOfYear, $daylightSavings) = localtime();
-  my $year = 1900 + $yearOffset;
-  $month = $month + 1;
-  $month = substr("0" . $month, length($month)-1,2);
-  my $day = substr("0" . $dayOfMonth, length($dayOfMonth)-1,2);
-  return "$year.$month.$day";
-} # end of getDate
-
-sub getTime {
-  # -----------------------------------------------------------
-  # Routine to return a formatted time in HH:MM:SS format
-  #
-  # Usage: getTime()
-  # Returns: HH:MM:SS
-  # -----------------------------------------------------------
-
-  my $currentSubroutine = 'getTime';
-  #my $second, $minute, $hour, $dayOfMonth, $month, $yearOffset, $dayOfWeek, $dayOfYear, $daylightSavings, $year;
-  my ($second, $minute, $hour, $dayOfMonth, $month, $yearOffset, $dayOfWeek, $dayOfYear, $daylightSavings) = localtime();
-  $hour = substr("0" . $hour, length($hour)-1,2);
-  $minute = substr("0" . $minute, length($minute)-1,2);
-  $second = substr("0" . $second, length($second)-1,2);
-  return "$hour:$minute:$second"
-} # end of getTime
 
 sub calcVersion {
   # --------------------------------------------------------------------"
@@ -224,7 +394,8 @@ sub calcVersion {
   # Returns: a string like .... "$name ($Version)  Last Changed on $Changed (UTC)"
   # --------------------------------------------------------------------"
 
-  my $ID = '$Id: calculator.pm,v 1.14 2018/05/29 04:22:42 db2admin Exp db2admin $';
+  my $currentRoutine = 'calcVersion';
+  my $ID = '$Id: calculator.pm,v 1.22 2019/07/16 23:52:27 db2admin Exp db2admin $';
 
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
@@ -235,6 +406,45 @@ sub calcVersion {
   return "$name ($Version)  Last Changed on $Changed (UTC)";
 
 } # end of calcVersion
+
+sub displayError {
+  # -----------------------------------------------------------
+  # This routine will display the error passed to it
+  #
+  # usage: displayError("<message>");
+  # returns: nothing
+  # -----------------------------------------------------------
+
+  my $lit  = shift;
+  my $sub = shift;
+  my $TS = getCurrentTimestamp();
+  my $sourceDisplay = '';
+  
+  if ( $sourceLiteral ne '' ) { $sourceDisplay = "- [$sourceLiteral] "; }
+  
+  if ( ! defined($sub) ) { $sub = "Unknown Subroutine" } # if nothing passed then default
+
+  if ( ! defined( $lit ) ) { # Nothing to display so just display the date and time
+    if ( $calc_errorToSTDOUT ) {
+      print "$sub - $TS - $sourceDisplay- ERROR\n";
+      print "$sub - $TS - $sourceDisplay: ERROR : Statement being processed was: $infixString\n";
+    }
+    else {
+      print STDERR "$sub - $TS - $sourceDisplay- ERROR\n";
+      print STDERR "$sub - $TS - $sourceDisplay: ERROR : Statement being processed was: $infixString\n";
+    }
+  }
+  else {
+    if ( $calc_errorToSTDOUT ) {
+      print "$sub - $TS - $sourceDisplay: ERROR : $lit\n";
+      print "$sub - $TS - $sourceDisplay: ERROR : Statement being processed was: $infixString\n";
+    }
+    else {
+      print STDERR "$sub - $TS - $sourceDisplay: ERROR : $lit\n";
+      print STDERR "$sub - $TS - $sourceDisplay: ERROR : Statement being processed was: $infixString\n";
+    }
+  }
+} # end of displayError
 
 sub displayDebug {
   # -----------------------------------------------------------
@@ -267,26 +477,25 @@ sub displayDebug {
   # Display a passed message with timestamp if the skelDebugLevel has been set
 
   if ( $call_debugLevel <= $calcDebugLevel ) {
-    my $tDate = getDate();
-    my $tTime = getTime();
+    my $TS = getCurrentTimestamp();
 
     if ( $lit eq "") { # Nothing to display so just display the date and time
-      print "$sub - $tDate $tTime\n";
+      print STDERR "$sub - $TS\n";
     }
     elsif ( $lit eq "DUMPSTACK" ) {
-      print "Dumping STACK ($#stack entries) \n";
-      for ( my $i = 0; $i <= $#stack; $i++ ) { print "$sub - $tDate $tTime : Stack $i : $stack[$i] [tot $#stack]\n"; }
+      print STDERR "Dumping STACK ($#stack entries) \n";
+      for ( my $i = 0; $i <= $#stack; $i++ ) { print STDERR "$sub - $TS : Stack $i : $stack[$i] [tot $#stack]\n"; }
     }
     elsif ( $lit eq "DUMPOUTPUT" ) {
-      print "Dumping OUTPUT STACK ( $#output entries) \n";
-      for ( my $i = 0; $i <= $#output; $i++ ) { print "$sub - $tDate $tTime : Output Stack $i : $output[$i] [tot $#output]\n"; }
+      print STDERR "Dumping OUTPUT STACK ( $#output entries) \n";
+      for ( my $i = 0; $i <= $#output; $i++ ) { print STDERR "$sub - $TS : Output Stack $i : $output[$i] [tot $#output]\n"; }
     }
     elsif ( $lit eq "DUMPOPSTACK" ) {
-      print "Dumping OPERAND STACK ( $#operandStack entries) \n";
-      for ( my $i = 0; $i <= $#operandStack; $i++ ) { print "$sub - $tDate $tTime : Operand Stack $i : $operandStack[$i] [tot $#operandStack]\n"; }
+      print STDERR "Dumping OPERAND STACK ( $#operandStack entries) \n";
+      for ( my $i = 0; $i <= $#operandStack; $i++ ) { print STDERR "$sub - $TS : Operand Stack $i : $operandStack[$i] [tot $#operandStack]\n"; }
     }
     else {
-      print "$sub - $tDate $tTime : $lit\n";
+      print STDERR "$sub - $TS : $lit\n";
     }
   }
 } # end of displayDebug
@@ -299,13 +508,13 @@ sub getCalculateToken {
   # Returns: <next space delimited token>
   # --------------------------------------------------------------------"
 
-  my $currentSubroutine = 'getCalculateToken';
+  my $currentRoutine = 'getCalculateToken';
   my $tLine = shift;
   my $tTok = "";
 
   my $currChar = '';
 
-  displayDebug("Line: $tLine Start Pos: $currentTokenPosition",2,$currentSubroutine);
+  displayDebug("Line: $tLine Start Pos: $currentTokenPosition",2,$currentRoutine);
 
   # Skip whitespace
   while ( ($currentTokenPosition <= length($tLine)) && (substr($tLine,$currentTokenPosition,1) =~ /\s/) ) {
@@ -320,7 +529,7 @@ sub getCalculateToken {
     my $j = 0;                                           # have to define it outside the for loop so it can be tested after the loop
     for ( $j = $currentTokenPosition+1; $j <= length($tLine); $j++ ) { # loop through the string ....
       my $myChar = substr($tLine,$j,1);                  # myChar now contains the character being tested
-      displayDebug("\$myChar: $myChar",1,$currentSubroutine);
+      displayDebug("\$myChar: $myChar",1,$currentRoutine);
       if ( ($myChar eq $tmpTerm) && (substr($tLine,$j+1,1) ne $tmpTerm) ) { # found a matching quote (that hasn't been escaped)
         #$tTok .=  substr($tLine,$j,1);
         $j++; # skip the trailing quote
@@ -338,9 +547,9 @@ sub getCalculateToken {
     $currentTokenPosition = $j;
   }
   else { # just provide the next whitespace or operator delimited token
-    displayDebug("Token is not a string. Terminating character has been set as whitespace(ish) >>" . substr($tLine,$currentTokenPosition) ,2,$currentSubroutine);
+    displayDebug("Token is not a string. Terminating character has been set as whitespace(ish) >>" . substr($tLine,$currentTokenPosition) ,2,$currentRoutine);
     while ( ($currentTokenPosition <= length($tLine) ) && (substr($tLine,$currentTokenPosition,1) ne ' ') ) { # while still chars left and char is not space
-      displayDebug(">>>>>>\$currentTokenPosition = $currentTokenPosition, char = " . substr($tLine,$currentTokenPosition,1) . ", tLine = $tLine, tTok = $tTok",2,$currentSubroutine);
+      displayDebug(">>>>>>\$currentTokenPosition = $currentTokenPosition, char = " . substr($tLine,$currentTokenPosition,1) . ", tLine = $tLine, tTok = $tTok",2,$currentRoutine);
       $currChar = substr($tLine,$currentTokenPosition,1);
       $tTok .= $currChar;                              # add the current character to the token
       $currentTokenPosition++;                         # move to the next character
@@ -353,7 +562,7 @@ sub getCalculateToken {
           last;
         }
         # check if the next chars are an operator
-        displayDebug("next byte = " . substr($tLine,$currentTokenPosition,1) . ", next 2 bytes = " . substr($tLine,$currentTokenPosition,2) . ",tTok = $tTok",2,$currentSubroutine);
+        displayDebug("next byte = " . substr($tLine,$currentTokenPosition,1) . ", next 2 bytes = " . substr($tLine,$currentTokenPosition,2) . ",tTok = $tTok",2,$currentRoutine);
         if ( (isOperator(substr($tLine,$currentTokenPosition,1))) ||              # next char is an operator
              (isOperator(substr($tLine,$currentTokenPosition,2))) ) {             # next 2 chars are an operator
           # so at this stage the next 1 or 2 characters are an operator ....
@@ -367,62 +576,36 @@ sub getCalculateToken {
             # now we need to check to see if the next characters weren't alpha operators (in which case we dont class them as such)
             if ( (! isAlphaOperator(substr($tLine,$currentTokenPosition,1))) &&      # was not a single char alpha operator
                  (! isAlphaOperator(substr($tLine,$currentTokenPosition,2))) ) {     # wasnot a 2 char alpha operator
-              displayDebug("Token terminated as following token is a non alpha operator",2,$currentSubroutine);
+              displayDebug("Token terminated as following token is a non alpha operator",2,$currentRoutine);
               last;
             }
           }
         }
         # Stop if the next char to be processed would be a one of ')', ',' or '('
         if ( index(' ) , ( ', substr($tLine,$currentTokenPosition,1)) > -1 ) {
-          displayDebug("Next character is one of \), \( or \,",2,$currentSubroutine);
+          displayDebug("Next character is one of \), \( or \,",2,$currentRoutine);
           last;
         }
         # Stop if the current token is a comma
         if ( $tTok eq ',' ) {
-          displayDebug("Token is a comma",1,$currentSubroutine);
+          displayDebug("Token is a comma",1,$currentRoutine);
           last;
         }
         # stop if the token is an opening parethesis
         if ( $tTok eq "\(" ) {
-          displayDebug("Token is \(",2,$currentSubroutine);
+          displayDebug("Token is \(",2,$currentRoutine);
           last;
         }
       }
     }
   }
 
-  displayDebug("Token identified was: $tTok",2,$currentSubroutine);
+  displayDebug("Token identified was: $tTok",2,$currentRoutine);
   return $tTok;
 
 } # end of getCalculateToken
 
-sub isNumeric {
-  # -----------------------------------------------------------
-  # Routine to check if a supplied parameter is a number or not
-  #
-  # Usage: isnumeric('123');
-  # Returns: 0 - not numeric , 1 numeric
-  # -----------------------------------------------------------
 
-  my $currentSubroutine = 'isNumeric';
-
-  my $var = shift;
-  displayDebug("var is: $var",1,$currentSubroutine);
-
-  if ($var =~ /^\d+\z/)         { return 1; } # only contains digits between the start and the end of the bufer
-  displayDebug("Not Only Digits",5,$currentSubroutine);
-  if ($var =~ /^-?\d+\z/)       { return 1; } # may contain a leading minus sign
-  displayDebug("Doesn't have a leading minus followed by digits",5,$currentSubroutine);
-  if ($var =~ /^[+-]?\d+\z/)    { return 1; } # may have a leading minus or plus
-  displayDebug("No leading minus or plus followed by digits",5,$currentSubroutine);
-  if ($var =~ /^-?\d+\.?\d*\z/) { return 1; } # may have a leading minus , digits , decimal point and then digits
-  displayDebug("Not a negative decimal number",5,$currentSubroutine);
-  if ($var =~ /^[+-]?(?:\d*\.\d)?\d*(?:[Ee][+-]?\d+)\z/) { return 1; }
-  displayDebug("Not scientific notation",5,$currentSubroutine);
-
-  return 0;
-
-} # end of isNumeric
 
 sub isFunction {
   # -----------------------------------------------------------
@@ -432,7 +615,7 @@ sub isFunction {
   # Returns: 0 - not function , 1 function
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'isFunction';
+  my $currentRoutine = 'isFunction';
   my $tok = shift;
 
   if ( index($calcFunctions, uc(" " . $tok . " ")) > -1 ) { return 1; }
@@ -448,7 +631,7 @@ sub isOperator {
   # Returns: 0 - not operator , 1 - is operator
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'isOperator';
+  my $currentRoutine = 'isOperator';
   my $tok = shift;
 
   if ( index($calcOperators, uc(" " . $tok . " ")) > -1 ) { return 1; }
@@ -464,7 +647,7 @@ sub isPossibleUnaryOperator {
   # Returns: 0 - not a possible unary operator , 1 - is possibly a unary operator
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'isPossibleUnaryOperator';
+  my $currentRoutine = 'isPossibleUnaryOperator';
   my $tok = shift;
 
   if ( index($possibleUnaryOperators, uc(" " . $tok . " ")) > -1 ) { return 1; }
@@ -480,7 +663,7 @@ sub isUnaryOperator {
   # Returns: 0 - not unary operator , 1 - is unary operator
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'isUnaryOperator';
+  my $currentRoutine = 'isUnaryOperator';
   my $tok = shift;
 
   if ( index($unaryOperators, uc(" " . $tok . " ")) > -1 ) { return 1; }
@@ -496,29 +679,13 @@ sub isAlphaOperator {
   # Returns: 0 - not alpha operator , 1 - is alpha operator
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'isAlphaOperator';
+  my $currentRoutine = 'isAlphaOperator';
   my $tok = shift;
 
   if ( index($calcOperatorsAlpha, uc($tok)) > -1 ) { return 1; }
 
   return 0;
 } # end of isAlphaOperator
-
-sub trim {
-  # -----------------------------------------------------------
-  # Routine to strip off leading and training blanks
-  #
-  # Usage: trim("  test  ");
-  # Returns: the supplied parm trimmed of spaces
-  # -----------------------------------------------------------
-
-  my $currentSubroutine = 'trim';
-
-  my $string = shift;
-  $string =~ s/^\s+//;
-  $string =~ s/\s+$//;
-  return $string;
-} # end of trim
 
 sub evaluateFunction {
   # -----------------------------------------------------------
@@ -528,7 +695,7 @@ sub evaluateFunction {
   # Returns: the calculated value
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'evaluateFunction';
+  my $currentRoutine = 'evaluateFunction';
 
   my $function = shift;
   my $arrayRef = shift;
@@ -544,46 +711,46 @@ sub evaluateFunction {
   
   if ( uc($function) eq "ABS" ) {
     # only one parameter to be processed
-    displayDebug("Operand = $parms[0] : operator is $function",1,$currentSubroutine);
+    displayDebug("Operand = $parms[0] : operator is $function",1,$currentRoutine);
     return abs($parms[0]);
   }
   elsif ( uc($function) eq "SUBSTR" ) {
     if ( $#parms == 0 ) { # only 1 parameter so just return it
-      displayDebug("$#parms parameter passed to $function (string just returned",1,$currentSubroutine);
+      displayDebug("$#parms parameter passed to $function (string just returned",1,$currentRoutine);
       return $parms[0];
     }
     elsif ( $#parms == 1 ) { # 2 parms so dont pass length
-      displayDebug("$#parms parameters passed to $function (processed as 2)",1,$currentSubroutine);
+      displayDebug("$#parms parameters passed to $function (processed as 2)",1,$currentRoutine);
       return substr($parms[1],$parms[0]); 
     }
     else { # only use the first 3 parameters
-      displayDebug("$#parms parameters passed to $function (processed as 3)",1,$currentSubroutine);
+      displayDebug("$#parms parameters passed to $function (processed as 3)",1,$currentRoutine);
       return substr($parms[2],$parms[1],$parms[0]); 
     }
   }
   elsif ( uc($function) eq "LEFT" ) {
     if ( $#parms == 0 ) { # only 1 parameter so just return it
-      displayDebug("$#parms parameter passed to $function (string just returned",1,$currentSubroutine);
+      displayDebug("$#parms parameter passed to $function (string just returned",1,$currentRoutine);
       return $parms[0];
     }
     else { # only use the first 2 parameters
-      displayDebug("$#parms parameters passed to $function (processed as 2)",1,$currentSubroutine);
+      displayDebug("$#parms parameters passed to $function (processed as 2)",1,$currentRoutine);
       return left($parms[1],$parms[0]); 
     }
   }
   elsif ( uc($function) eq "RIGHT" ) {
     if ( $#parms == 0 ) { # only 1 parameter so just return it
-      displayDebug("$#parms parameter passed to $function (string just returned",1,$currentSubroutine);
+      displayDebug("$#parms parameter passed to $function (string just returned",1,$currentRoutine);
       return $parms[0];
     }
     else { # only use the first 2 parameters
-      displayDebug("$#parms parameters passed to $function (processed as 2)",1,$currentSubroutine);
+      displayDebug("$#parms parameters passed to $function (processed as 2)",1,$currentRoutine);
       return right($parms[1],$parms[0]); 
     }
   }
   elsif ( uc($function) eq "TRIM" ) {
     # only one parameter to be processed
-    displayDebug("Operand = $parms[0] : operator is $function",1,$currentSubroutine);
+    displayDebug("Operand = $parms[0] : operator is $function",1,$currentRoutine);
     my $val = $parms[0];
     $val =~ s/^\s+//;
     $val =~ s/\s+$//;
@@ -591,19 +758,19 @@ sub evaluateFunction {
   }
   elsif ( uc($function) eq "LTRIM" ) {
     # only one parameter to be processed
-    displayDebug("Operand = $parms[0] : operator is $function",1,$currentSubroutine);
+    displayDebug("Operand = $parms[0] : operator is $function",1,$currentRoutine);
     my $val = $parms[0];
     $val =~ s/^\s+//;
     return $val;
   }
   elsif ( uc($function) eq "RTRIM" ) {
     # only one parameter to be processed
-    displayDebug("Operand = $parms[0] : operator is $function",1,$currentSubroutine);
+    displayDebug("Operand = $parms[0] : operator is $function",1,$currentRoutine);
     my $val = $parms[0];
     $val =~ s/\s+$//;
     return $val;
   }   
-}
+} # end of evaluateFunction
 
 sub evaluateBinaryOperator {
   # -----------------------------------------------------------
@@ -613,39 +780,152 @@ sub evaluateBinaryOperator {
   # Returns: the calculated value
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'evaluateBinaryOperator';
+  my $currentRoutine = 'evaluateBinaryOperator';
 
   my $operator = shift;
   my $op1 = shift;
   my $op2 = shift;
+  my $isDuration = 0;  # flag indicating that the variable is a valid duration
+  my $duration = 0;    # the duration of a supplied parameter
 
-  if ( $operator eq "+" ) { return $op1 + $op2; }       # addition
-  elsif ( $operator eq "-" ) { return $op1 - $op2; }    # subtraction
+  if ( $operator eq "+" ) {        # addition 
+    displayDebug( "Doing an addition. op1=$op1, op2=$op2", 1, $currentRoutine);
+    if ( isValidTimestamp($op1) ) { # timestamp addition (perhaps)
+      ($isDuration, $duration) = processDuration($op2,'T'); # check if the duration is valid and convert it to a timestamp format
+      if ( $isDuration ) { # add the duration
+        return performTimestampAddition($op1, $duration);
+      }
+      else { # not a valid timestamp addition
+        displayError("Looks like timestamp addition but you can only add duratons to timestamps",$currentRoutine);
+        return $op1 + $op2;
+      }
+    }
+    elsif ( isValidDate($op1) ) { # date addition (perhaps)
+      ($isDuration, $duration) = processDuration($op2,'T'); # check if the duration is valid and convert it to a timestamp format
+      if ( $isDuration ) { # add the duration
+        return performDateAddition($op1, $duration);
+      }
+      else { # not a valid date addition
+        displayError("Looks like date addition but you can only add duratons to dates",$currentRoutine);
+        return $op1 + $op2;
+      }
+    }
+    elsif ( isValidTime($op1) ) { # time addition (perhaps)
+      ($isDuration, $duration) = processDuration($op2,'T'); # check if the duration is valid and convert it to a timestamp format
+      if ( $isDuration ) { # add the duration
+        return performTimeAddition($op1, $duration);
+      }
+      elsif ( isValidTime($op2) ) { # adding a time to a time
+        return performTimeAddition($op1, "0000-00-00 $op2");
+      }
+      else { # not a valid time addition
+        displayError("Looks like time addition but you can only add duratons or times to times",$currentRoutine);
+        return $op1 + $op2;
+      }
+    }
+    else { # just treat it as normal addition
+      return $op1 + $op2; 
+    }
+  }
+  elsif ( $operator eq "-" ) { 
+    displayDebug( "Doing a subtraction. op1=$op1, op2=$op2", 1, $currentRoutine);
+    if ( isValidTimestamp($op1) ) { # timestamp addition 
+      ($isDuration, $duration) = processDuration($op2,'T'); # check if the duration is valid and convert it to a timestamp format
+      if ( $isDuration ) { # subtract the duration
+        return performTimestampSubtraction($op1, $duration);
+      }
+      elsif ( isValidTimestampFormat($op2) ) { # subtract the timestamp
+        # the timestamp may be a duration in a timestamp's format or a real timestamp
+        # a year less than 1000 indicates that it is a duration in timestamp's clothing
+        return performTimestampSubtraction($op1, $duration);
+      }
+      elsif ( isValidTime($op2) ) { # subtract the timestamp
+        return performTimestampSubtraction($op1, "0000-00-00 $duration");
+      }
+      else { # not a valid timestamp subtraction
+        displayError("Looks like timestamp subtraction but you can only subtract durations, times or timestamps from timestamps",$currentRoutine);
+        return $op1 - $op2;
+      }
+    }
+    elsif ( isValidDate($op1) ) { # date subtraction
+      ($isDuration, $duration) = processDuration($op2,'T'); # check if the duration is valid and convert it to a timestamp format
+      if ( $isDuration ) { # subtract the duration
+        return performDateSubtraction($op1, $duration, 'T');
+      }
+      elsif ( isValidDate($op2) ) { # subtract the date (which will return the number of days between the dates)
+        return performDateSubtraction($op1, "$op2 00:00:00", 'D');
+      }
+      else { # not a valid date subtraction
+        displayError("Looks like date subtraction but you can only subtract durations from dates",$currentRoutine);
+        return $op1 - $op2;
+      }
+    }
+    elsif ( isValidTime($op1) ) { # time subtraction (perhaps)
+      ($isDuration, $duration) = processDuration($op2,'T'); # check if the duration is valid and convert it to a timestamp format
+      if ( $isDuration ) { # subtract the duration
+        return performTimeSubtraction($op1, $duration);
+      }
+      elsif ( isValidTime($op2) ) { # subtracting a time from a time
+        return performTimeSubtraction($op1, "0000-00-00 $op2");
+      }
+      else { # not a valid time subtraction
+        displayError("Looks like time subtraction but you can only subtract durations or times from times",$currentRoutine);
+        return $op1 - $op2;
+      }
+    }
+    else { # just treat it as normal subtraction
+      return $op1 - $op2; 
+    }
+  }    # subtraction
   elsif ( $operator eq "*" ) { return $op1 * $op2; }    # multiplication
   elsif ( $operator eq "/" ) { # division
     if ( $op2 == 0 ) { 
+      displayError("Divisor must not be zero - OP1=$op1, OP2=$op2",$currentRoutine) ;
       return 0;
-      print STDERR "ERROR: Divisor must not be zero - OP1=$op1, OP2=$op2";
     }
     else {
       return $op1 / $op2; 
     }
   }    
   elsif ( ($operator eq ">") || ($operator eq "GT") ) { # greater than
-    if ( $op1 > $op2 ) { return 1; }     # true
-    else { return 0; }                   # false
+    if ( isNumeric($op1) && isNumeric($op2) ) { # if both operands are numeric 
+      if ( $op1 > $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
+    else { # do a character compare
+      if ( $op1 gt $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
   }
   elsif ( ($operator eq ">=") || ($operator eq "GE") ) { # greater than or equal
-    if ( $op1 >= $op2 ) { return 1; } # true
-    else { return 0; }                # false
+    if ( isNumeric($op1) && isNumeric($op2) ) { # if both operands are numeric 
+      if ( $op1 >= $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
+    else { # do a character compare
+      if ( $op1 ge $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
   }
   elsif ( ($operator eq "<") || ($operator eq "LT")  ) { # less than
-    if ( $op1 < $op2 ) { return 1; }  # true
-    else { return 0; }                # false
+    if ( isNumeric($op1) && isNumeric($op2) ) { # if both operands are numeric 
+      if ( $op1 < $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
+    else { # do a character compare
+      if ( $op1 lt $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
   }
   elsif ( ($operator eq "<=") || ($operator eq "LE") ) { # less than or equal
-    if ( $op1 <= $op2 ) { return 1; } # true
-    else { return 0; }                # false
+    if ( isNumeric($op1) && isNumeric($op2) ) { # if both operands are numeric 
+      if ( $op1 <= $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
+    else { # do a character compare
+      if ( $op1 le $op2 ) { return 1; }     # true
+      else { return 0; }                   # false
+    }
   }
   elsif ( uc($operator) eq "AND" ) { # AND
     if ( isNumeric($op1) && ($op1 == 0) ) { return 0; }     # false - first op is zero
@@ -686,7 +966,9 @@ sub evaluateBinaryOperator {
   elsif ( $operator eq "=~" ) { return ($op1 =~ /$op2/); }     # contains
   elsif ( $operator eq "%" ) {                                 # modulo
     if ( isNumeric($op1) && isNumeric($op2) ) { return $op1 % $op2; }
-    else { return("ERROR: Parameters to % must be numeric - OP1=$op1, OP2=$op2"); }
+    else { 
+      displayError("Parameters to % must be numeric - OP1=$op1, OP2=$op2",$currentRoutine) ;
+      return(""); }
   }
 
 } # end of evaluateBinaryOperator
@@ -699,7 +981,7 @@ sub evaluateUnaryOperator {
   # Returns: the calculated value
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'evaluateUnaryOperator';
+  my $currentRoutine = 'evaluateUnaryOperator';
 
   my $operator = shift;
   my $op1 = shift;
@@ -729,13 +1011,15 @@ sub evaluateInfix {
   # -----------------------------------------------------------
   # Routine to evaluate a supplied infix calculation
   #
-  # Usage: evaluateInfix('1+1');
+  # Usage: evaluateInfix('1+1'[,'literal']);
   # Returns: the result of the calculation
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'evaluateInfix';
+  my $currentRoutine = 'evaluateInfix';
 
-  my $infixString = shift;
+  $infixString = shift;
+  $sourceLiteral = shift;
+  if ( ! defined($sourceLiteral) ) { $sourceLiteral = ''; }
   $infixString = trim($infixString);
 
   $currentTokenPosition = 0;
@@ -748,7 +1032,7 @@ sub evaluateInfix {
   my $calc = 0;
   my $lastToken ;
 
-  displayDebug("Supplied infix string is: $infixString",1,$currentSubroutine);
+  displayDebug("Supplied infix string is: $infixString",1,$currentRoutine);
 
   my $token = getCalculateToken($infixString);
   if ( $token eq $infixString ) { # dont bother just return the string - nothing to do
@@ -757,33 +1041,33 @@ sub evaluateInfix {
 
   # This first conversion converts the infix expression into a reverse polish expression
 
-  displayDebug("===== Converting Infix to PostFix =====",1,$currentSubroutine);
+  displayDebug("===== Converting Infix to PostFix =====",1,$currentRoutine);
 
   while ($token ne "") {
-    displayDebug("Token = $token",2,$currentSubroutine);
+    displayDebug("Token = $token",2,$currentRoutine);
     if ( $currentTokenIsString ) { # and thus it is an operand
       push (@output, $token) ;
-      displayDebug("DUMPSTACK",2,$currentSubroutine);
-      displayDebug("Pushing operand $token output size = $#output",1,$currentSubroutine);
+      displayDebug("DUMPSTACK",2,$currentRoutine);
+      displayDebug("Pushing operand $token output size = $#output",1,$currentRoutine);
     }
     elsif ( isNumeric($token) ) {
       push (@output, $token) ;
-      if ( $calcDebugLevel > 1  ) { for ( my $i = 0; $i <= $#stack; $i++ ) { displayDebug("   Stack $i : $stack[$i] [tot $#stack]",2,$currentSubroutine); } }
-      displayDebug("DUMPOUTPUT",2,$currentSubroutine);
-      displayDebug("Pushing numeric $token output size = $#output",1,$currentSubroutine);
+      if ( $calcDebugLevel > 1  ) { for ( my $i = 0; $i <= $#stack; $i++ ) { displayDebug("   Stack $i : $stack[$i] [tot $#stack]",2,$currentRoutine); } }
+      displayDebug("DUMPOUTPUT",2,$currentRoutine);
+      displayDebug("Pushing numeric $token output size = $#output",1,$currentRoutine);
     }
     elsif ( isFunction($token) ) {
       push (@stack, $token) ;
-      if ( $calcDebugLevel > 1  ) { for ( my $i = 0; $i <= $#stack; $i++ ) { displayDebug("DUMPSTACK",2,$currentSubroutine); } }
+      if ( $calcDebugLevel > 1  ) { for ( my $i = 0; $i <= $#stack; $i++ ) { displayDebug("DUMPSTACK",2,$currentRoutine); } }
       push (@output, ')') ;
-      if ( $calcDebugLevel > 1  ) { for ( my $i = 0; $i <= $#output; $i++ ) { displayDebug("DUMPOUTPUT",2,$currentSubroutine); } }
-      displayDebug("Pushing function $token onto stack, Stack Size $#stack",1,$currentSubroutine);
+      if ( $calcDebugLevel > 1  ) { for ( my $i = 0; $i <= $#output; $i++ ) { displayDebug("DUMPOUTPUT",2,$currentRoutine); } }
+      displayDebug("Pushing function $token onto stack, Stack Size $#stack",1,$currentRoutine);
     }
     elsif ( $token eq "," ) { # a comma is a function parm delimiter - if a comma is required it should be in quotes
      
       # clear out any other operators for this parameter (an opening bracket signifies the beginning for this parm)
       while ( ($#stack > -1 ) && ( $stack[$#stack] ne "\(" ) ) {      # not at tthe end of the operators for this parm
-        displayDebug("ret operator: $stack[$#stack]",1,$currentSubroutine);
+        displayDebug("ret operator: $stack[$#stack]",1,$currentRoutine);
         push (@output, pop(@stack)) ;
       }
       
@@ -801,7 +1085,7 @@ sub evaluateInfix {
           elsif ( $token eq '+' ) { $token = 'u+'; }
         }
       }
-      displayDebug("Operator on top of stack is: >$stack[$#stack]<, top of stack is $#stack, \$token is $token",1,$currentSubroutine);
+      displayDebug("Operator on top of stack is: >$stack[$#stack]<, top of stack is $#stack, \$token is $token",1,$currentRoutine);
       while ( ($#stack > -1) && isOperator($stack[$#stack]) && ( $stack[$#stack] ne "\(" ) && ( $opPrecedence{$stack[$#stack]} >= $opPrecedence{$token} ) ) { # it's an operator on the top of stack and precendence of token is less or equal
                                                                                                                                # than precedence of the operator on the top of the stack
         if( $opPrecedence{$stack[$#stack]} > $opPrecedence{$token} ) { # pop all operators on the stack with a lower precedence
@@ -814,91 +1098,91 @@ sub evaluateInfix {
           last; # we're done here
         }
       }
-      displayDebug("Pushing operator $token stack size = $#stack",1,$currentSubroutine);
+      displayDebug("Pushing operator $token stack size = $#stack",1,$currentRoutine);
       push (@stack, $token) ; # place the current token onto the stack
-      displayDebug("DUMPSTACK",2,$currentSubroutine);
+      displayDebug("DUMPSTACK",2,$currentRoutine);
     }
     elsif ( $token eq "\(" ) {
       push (@stack, $token) ;
-      displayDebug("Pushing ( on to stack",1,$currentSubroutine);
+      displayDebug("Pushing ( on to stack",1,$currentRoutine);
     }
     elsif ( $token eq "\)" ) {
       while ( (defined($stack[$#stack])) && ($stack[$#stack] ne "\(" ) ) {
-        displayDebug("DUMPSTACK",2,$currentSubroutine);
+        displayDebug("DUMPSTACK",2,$currentRoutine);
         push(@output, pop(@stack)); # pop it off of the stack and put it to output
-        displayDebug("added to output stack : $output[$#output]",1,$currentSubroutine);
+        displayDebug("added to output stack : $output[$#output]",1,$currentRoutine);
       }
-      displayDebug("DUMPOUTPUT",2,$currentSubroutine);
+      displayDebug("DUMPOUTPUT",2,$currentRoutine);
       if ( defined($stack[$#stack]) ) {  # top of stack is a '('
         pop(@stack);  # pop and discard the (
         if ( ($#stack > -1) && isFunction($stack[$#stack]) ) { # if it is a function on top of the stack, pop the function call off as well
           push(@output, pop(@stack)); # pop it off of the stack and put it to output
-          displayDebug("added to output stack : $output[$#output]",1,$currentSubroutine);
+          displayDebug("added to output stack : $output[$#output]",1,$currentRoutine);
         }
       }
       else { # there's a problem
-        print STDERR "Calculator Error: Parsing error - mismatched parentheses\n";
+        displayError("Calculator Error: Parsing error - mismatched parentheses",$currentRoutine) ;
       }
     }
     else { # token was none of the above - ie it was probably just a string - so treat it as an operand
       push (@output, $token) ;
-      displayDebug("DUMPSTACK",2,$currentSubroutine);
-      displayDebug("Pushing operand $token output size = $#output",1,$currentSubroutine);
+      displayDebug("DUMPSTACK",2,$currentRoutine);
+      displayDebug("Pushing operand $token output size = $#output",1,$currentRoutine);
     }
     # get the next token
     $lastToken = $token;    # save the token in case it was needed
     $token = getCalculateToken($infixString);
   }
-  displayDebug("Started stack clear down",1,$currentSubroutine);
+  displayDebug("Started stack clear down",1,$currentRoutine);
   $retToken = pop(@stack);
   while ( defined($retToken) ) { # flush out the rest of the stack
     if ( index(' ( ) ', $retToken) > -1 ) { # if the returned token is a bracket then something has gone wrong .....
-      print STDERR "Calculator Error: Parsing error mismatched parentheses\n";
+      displayError("Calculator Error: Parsing error mismatched parentheses",$currentRoutine) ;
       last;
     }
     push(@output, $retToken);
-    displayDebug("DUMPSTACK",1,$currentSubroutine);
+    displayDebug("DUMPSTACK",1,$currentRoutine);
     $retToken = pop(@stack);
   }
-  displayDebug("Finished stack clear down",1,$currentSubroutine);
-  displayDebug("DUMPOUTPUT",2,$currentSubroutine);
+  displayDebug("Finished stack clear down",1,$currentRoutine);
+  displayDebug("DUMPOUTPUT",2,$currentRoutine);
 
   # Now evaluate the converted infix string (which is now a reverse polish expression)!
 
-  displayDebug("===== Evaluating PostFix =====",1,$currentSubroutine);
+  displayDebug("===== Evaluating PostFix =====",1,$currentRoutine);
 
-  displayDebug("Input: $infixString",1,$currentSubroutine);
+  displayDebug("Input: $infixString",1,$currentRoutine);
   my @operandStack = ();
-  displayDebug("DUMPOUTPUT",1,$currentSubroutine);
+  displayDebug("DUMPOUTPUT",1,$currentRoutine);
   my $rPolish = shift(@output);
   while ( (@output > 0) ) {
     if ( substr($rPolish . "  ",0,2) eq ':"' ) { # token is a string - so operand
       $rPolish = substr($rPolish,2);    # strip off the string indicator
-      displayDebug("Token >$rPolish< is an operand",1,$currentSubroutine);
+      displayDebug("Token >$rPolish< is an operand",1,$currentRoutine);
       push ( @operandStack, $rPolish) ;
-      displayDebug("Pushing >$rPolish< onto the operandStack",2,$currentSubroutine);
+      displayDebug("Pushing >$rPolish< onto the operandStack",2,$currentRoutine);
     }
     elsif ( isOperator($rPolish) || isUnaryOperator($rPolish) ) { # process the operator ....
-      displayDebug("Token >$rPolish< is an Operator",1,$currentSubroutine);
+      displayDebug("Token >$rPolish< is an Operator",1,$currentRoutine);
       if ( isUnaryOperator($rPolish) ) { # it's a unary operator so only needs one operand
         $op2 =  '';
         $op1 =  pop(@operandStack);
-        displayDebug("op1 = $op1 : operator is >$rPolish<",1,$currentSubroutine);
+        displayDebug("op1 = $op1 : operator is >$rPolish<",1,$currentRoutine);
         $val = evaluateUnaryOperator($rPolish, $op1);
-        displayDebug("val = $val",1,$currentSubroutine);
+        displayDebug("val = $val",1,$currentRoutine);
         push ( @operandStack, $val);
       }
       else { # assuming it needs 2 parameters
         $op2 =  pop(@operandStack);
         $op1 =  pop(@operandStack);
-        displayDebug("op1 = $op1, op2 = $op2 : operator is >$rPolish<",1,$currentSubroutine);
+        displayDebug("op1 = $op1, op2 = $op2 : operator is >$rPolish<",1,$currentRoutine);
         $val = evaluateBinaryOperator($rPolish, $op1, $op2);
-        displayDebug("val = $val",1,$currentSubroutine);
+        displayDebug("val = $val",1,$currentRoutine);
         push ( @operandStack, $val);
       }
     }
     elsif ( isFunction($rPolish) ) { # process the function ....
-      displayDebug("Token >$rPolish< is a function",1,$currentSubroutine);
+      displayDebug("Token >$rPolish< is a function",1,$currentRoutine);
       # load up the function parameters until you get to a closing bracket .....
       my @funcParms = ();
       my $tmpParm = pop(@operandStack);
@@ -912,9 +1196,9 @@ sub evaluateInfix {
       push ( @operandStack, $val) ; # put the value back on the operand stack
     }
     else { # must be an operand - save it for later use
-      displayDebug("Token >$rPolish< is an operand",1,$currentSubroutine);
+      displayDebug("Token >$rPolish< is an operand",1,$currentRoutine);
       push ( @operandStack, $rPolish) ;
-      displayDebug("Pushing >$rPolish< onto the operandStack",2,$currentSubroutine);
+      displayDebug("Pushing >$rPolish< onto the operandStack",2,$currentRoutine);
     }
     # get the next element off of the Reverse Polish stack
     $rPolish = shift(@output);
@@ -922,29 +1206,29 @@ sub evaluateInfix {
 
   # now just process the entries still on the stack
 
-  displayDebug("DUMPOPSTACK",2,$currentSubroutine);
+  displayDebug("DUMPOPSTACK",2,$currentRoutine);
 
   if ( isOperator($rPolish) ) { # process the operator ....
-    displayDebug("Token >$rPolish< is an Operator",1,$currentSubroutine);
+    displayDebug("Token >$rPolish< is an Operator",1,$currentRoutine);
     if ( isUnaryOperator($rPolish) ) { # it's a unary operator so only needs one operand
       $op2 =  '';
       $op1 =  pop(@operandStack);
-      displayDebug("op1 = $op1 : operator is >$rPolish<",1,$currentSubroutine);
+      displayDebug("op1 = $op1 : operator is >$rPolish<",1,$currentRoutine);
       $val = evaluateUnaryOperator($rPolish, $op1);
-      displayDebug("val = $val",1,$currentSubroutine);
+      displayDebug("val = $val",1,$currentRoutine);
       push ( @operandStack, $val);
     }
     else { # assuming it needs 2 parameters
       $op2 =  pop(@operandStack);
       $op1 =  pop(@operandStack);
-      displayDebug("op1 = $op1, op2 = $op2 : operator is >$rPolish<",1,$currentSubroutine);
+      displayDebug("op1 = $op1, op2 = $op2 : operator is >$rPolish<",1,$currentRoutine);
       $val = evaluateBinaryOperator($rPolish, $op1, $op2);
-      displayDebug("val = $val",1,$currentSubroutine);
+      displayDebug("val = $val",1,$currentRoutine);
       push ( @operandStack, $val);
     }
   }
   elsif ( isFunction($rPolish) ) { # process the function ....
-     displayDebug("Token >$rPolish< is a function",1,$currentSubroutine);
+     displayDebug("Token >$rPolish< is a function",1,$currentRoutine);
       # load up the function parameters until you get to a closing bracket .....
       my @funcParms = ();
       my $tmpParm = pop(@operandStack);
@@ -959,7 +1243,7 @@ sub evaluateInfix {
   }
   else {
     # neither a function or an operator ..... if it is the only thing on the stack then there was no processing to do .....
-    displayDebug( ">>>>>> $#operandStack",1,$currentSubroutine);
+    displayDebug( ">>>>>> $#operandStack",1,$currentRoutine);
     if ( $#operandStack == -1 ) {
       if ( substr($rPolish,0,2) eq ':"' ) {  # there is a string indicator
         $rPolish = substr($rPolish,2);       # get rid of the string indiactor
@@ -967,14 +1251,12 @@ sub evaluateInfix {
       push (@operandStack, $rPolish);  # push the result back onto the stack
     }
     else {
-      print STDERR "Calculator Error - Something wrong - Found $rPolish on the stack - it should be an operator!\n";
+      displayError("Calculator Error - Something wrong - Found $rPolish on the stack - it should be an operator!",$currentRoutine) ;
     }
   }
 
   $val = pop(@operandStack);
-  displayDebug( ">>>>>> returned $val",1,$currentSubroutine);
+  displayDebug( ">>>>>> returned $val",1,$currentRoutine);
   return $val;
 } # end of evaluateInfix
 1;
-
-
