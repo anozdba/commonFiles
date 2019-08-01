@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------
 # processSkeleton.pm
 #
-# $Id: processSkeleton.pm,v 1.144 2019/07/22 02:32:12 db2admin Exp db2admin $
+# $Id: processSkeleton.pm,v 1.145 2019/07/28 23:48:48 db2admin Exp db2admin $
 #
 # Description:
 # Script to process a skeleton
@@ -31,6 +31,12 @@
 # ChangeLog:
 #
 # $Log: processSkeleton.pm,v $
+# Revision 1.145  2019/07/28 23:48:48  db2admin
+# a couple of changes:
+# 1. allow )LOGOFF to specify no connections - in this case it will close ALL open connections
+# 2. add in )RESET command to reset internal variables back to their initial values
+# 3. Correct the display of the 'Not All Output Displayed' messages
+#
 # Revision 1.144  2019/07/22 02:32:12  db2admin
 # add in comments for 1.142
 #
@@ -627,6 +633,23 @@ if (exists($ENV{'SKL_USERID'}) ) { $skelUserID = $ENV{'SKL_USERID'}; }
 
 # private global variables
 
+my %initSkelValue = ();
+my $charSpecialVariables = " SKELDELIMITER SKELDEBUGMODULES SKELSHOWSQL SKELVERBOSESQLERRORS OUTPUTMODE ";
+my $numSpecialVariables  = " SKELMAXOUTPUT SKELMAXROWS SKELMAXTABLEOUT SKELDEBUGLEVEL TESTROUTINES INDEXCASEINSENSITIVE ";
+
+# initial values for all of the adjustable values
+$initSkelValue{'SKELDELIMITER'} = $skelDelimiter;
+$initSkelValue{'SKELMAXOUTPUT'} = $skelMaxOutput;
+$initSkelValue{'SKELMAXROWS'} = $skelMaxRows;
+$initSkelValue{'SKELMAXTABLEOUT'} = $skelMaxTableOut;
+$initSkelValue{'SKELDEBUGMODULES'} = $skelDebugModules;
+$initSkelValue{'SKELSHOWSQL'} = $skelShowSQL;
+$initSkelValue{'SKELDEBUGLEVEL'} = $skelDebugLevel;
+$initSkelValue{'SKELVERBOSESQLERRORS'} = $skelVerboseSQLErrors;
+$initSkelValue{'TESTROUTINES'} = $testRoutines;
+$initSkelValue{'INDEXCASEINSENSITIVE'} = $indexCaseInsensitive;
+$initSkelValue{'OUTPUTMODE'} = $outputMode;
+
 my $scriptDir;
 my $OS;
 my %skelArray = ();                       # associative array holding the array number where lines are held
@@ -896,7 +919,7 @@ sub skelVersion {
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'skelVersion'; 
-  my $ID = '$Id: processSkeleton.pm,v 1.144 2019/07/22 02:32:12 db2admin Exp db2admin $';
+  my $ID = '$Id: processSkeleton.pm,v 1.145 2019/07/28 23:48:48 db2admin Exp db2admin $';
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
   my @N = split(",",$nameStr);
@@ -5597,12 +5620,22 @@ sub processFTAB {
               }
 
               if ( $FTAB_output_len > $skelMaxTableOut ) { # check to see if we have broken the output limit for tables
-                outputLine("<BR><BR><b>Not All data returned</b> - Table output limited to $skelMaxTableOut characters<BR><BR>\n");
+                if ( $outputMode eq "HTTP" ) {            # output it as html
+                  outputLine("<BR><BR><b>Not All data returned</b> - Table output limited to $skelMaxTableOut characters<BR><BR>\n");
+                }
+                else {
+                  outputLine("\n\nNot All data returned - Table output limited to $skelMaxTableOut characters\n\n");
+                }
                 last; # finish the data collection
               }
 
               if ( $cursorRowNumber{'FTAB'} >= $skelMaxRows ) { 
-                outputLine("<BR><BR><b>Not All data returned</b> - Table output limited to $skelMaxRows rows<BR><BR>\n");
+                if ( $outputMode eq "HTTP" ) {            # output it as html
+                  outputLine("<BR><BR><b>Not All data returned</b> - Table output limited to $skelMaxRows rows<BR><BR>\n");
+                }
+                else {
+                  outputLine("\n\nNot All data returned - Table output limited to $skelMaxRows rows\n\n");
+                }
                 last; # finish the data collection
               }
 
@@ -7362,9 +7395,6 @@ sub checkForSpecialVariables {
   my $returnValue = 0;
   my $searchName = " " . uc($varName) . " ";
   
-  my $charSpecialVariables = " SKELDELIMITER SKELDEBUGMODULES SKELSHOWSQL SKELVERBOSESQLERRORS OUTPUTMODE ";
-  my $numSpecialVariables  = " SKELMAXOUTPUT SKELMAXROWS SKELMAXTABLEOUT SKELDEBUGLEVEL TESTROUTINES INDEXCASEINSENSITIVE ";
-  
   displayDebug("Starting $varName <> $varValue",1,$currentSubroutine);
   
   if ( $charSpecialVariables =~ /$searchName/ ) { # it is a special variable that takes characters  
@@ -7463,6 +7493,76 @@ sub processSET {
   }  
 } # end of processSet
 
+sub processRESET {
+  # -----------------------------------------------------------
+  # Routine to reset all variables back to their initial state
+  #
+  # Usage: processRESET(<control card>)
+  # Returns: nothing but sets the specified variables or all 
+  # variables back to their initial values
+  # -----------------------------------------------------------
+
+  my $currentSubroutine = 'processRESET'; 
+  my $card = shift;                    # get the card information
+  my $values;
+  if ( length($card) < $currentLinePosition ) { $values = ''; }
+  else { $values = uc(trim(substr($card,$currentLinePosition))); }
+  
+  displayDebug("Beginning RESET",0,$currentSubroutine); 
+  if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
+
+    displayDebug("About to RESET",0,$currentSubroutine); 
+    if ( (trim($values) eq '') || ( trim($values) eq 'ALL' ) )  { # reset all
+      displayDebug("Doing ALL reset",0,$currentSubroutine); 
+      $skelDelimiter = $initSkelValue{'SKELDELIMITER'};
+      $skelMaxOutput = $initSkelValue{'SKELMAXOUTPUT'} ;
+      $skelMaxRows = $initSkelValue{'SKELMAXROWS'} ;
+      $skelMaxTableOut = $initSkelValue{'SKELMAXTABLEOUT'} ;
+      $skelDebugModules= $initSkelValue{'SKELDEBUGMODULES'} ;
+      $skelShowSQL= $initSkelValue{'SKELSHOWSQL'} ;
+      $skelVerboseSQLErrors = $initSkelValue{'SKELVERBOSESQLERRORS'} ;
+      $testRoutines = $initSkelValue{'TESTROUTINES'} ;
+      $indexCaseInsensitive = $initSkelValue{'INDEXCASEINSENSITIVE'} ;
+      $outputMode = $initSkelValue{'OUTPUTMODE'} ;
+      displayDebug("Value RESET: skelDelimiter = $skelDelimiter",0,$currentSubroutine); 
+      displayDebug("Value RESET: skelMaxOutput = $skelMaxOutput",0,$currentSubroutine); 
+      displayDebug("Value RESET: skelMaxRows = $skelMaxRows",0,$currentSubroutine); 
+      displayDebug("Value RESET: skelMaxTableOut = $skelMaxTableOut",0,$currentSubroutine); 
+      displayDebug("Value RESET: skelDebugModules = $skelDebugModules",0,$currentSubroutine); 
+      displayDebug("Value RESET: skelShowSQL = $skelShowSQL",0,$currentSubroutine); 
+      displayDebug("Value RESET: skelDebugLevel = $skelDebugLevel",0,$currentSubroutine); 
+      displayDebug("Value RESET: skelVerboseSQLErrors = $skelVerboseSQLErrors",0,$currentSubroutine); 
+      displayDebug("Value RESET: testRoutines = $testRoutines",0,$currentSubroutine); 
+      displayDebug("Value RESET: indexCaseInsensitive = $indexCaseInsensitive",0,$currentSubroutine); 
+      displayDebug("Value RESET: outputMode = $outputMode",0,$currentSubroutine); 
+      $skelDebugLevel= $initSkelValue{'SKELDEBUGLEVEL'} ;
+    }
+    else { # reset each of the specified variables
+      displayDebug("Doing specfic reset: $values",0,$currentSubroutine); 
+      my @tmpVars = split(" ", $values);
+      foreach my $var ( @tmpVars ) {
+        # if the value isn't in the list below it will be ignored 
+        if ( $var eq 'SKELDELIMITER' ) { $skelDelimiter = $initSkelValue{'SKELDELIMITER'}; displayDebug("Value RESET: skelDelimiter = $skelDelimiter",1,$currentSubroutine);}
+        elsif ( $var eq 'SKELMAXOUTPUT' ) { $skelMaxOutput = $initSkelValue{'SKELMAXOUTPUT'} ; displayDebug("Value RESET: skelMaxOutput = $skelMaxOutput",1,$currentSubroutine);}
+        elsif ( $var eq 'SKELMAXROWS' ) { $skelMaxRows = $initSkelValue{'SKELMAXROWS'} ; displayDebug("Value RESET: skelMaxRows = $skelMaxRows",1,$currentSubroutine);}
+        elsif ( $var eq 'SKELMAXTABLEOUT' ) { $skelMaxTableOut = $initSkelValue{'SKELMAXTABLEOUT'} ; displayDebug("Value RESET: skelMaxTableOut = $skelMaxTableOut",1,$currentSubroutine);}
+        elsif ( $var eq 'SKELDEBUGMODULES' ) { $skelDebugModules= $initSkelValue{'SKELDEBUGMODULES'} ; displayDebug("Value RESET: skelDebugModules = $skelDebugModules",1,$currentSubroutine);}
+        elsif ( $var eq 'SKELSHOWSQL' ) { $skelShowSQL= $initSkelValue{'SKELSHOWSQL'} ; displayDebug("Value RESET: skelShowSQL = $skelShowSQL",1,$currentSubroutine);}
+        elsif ( $var eq 'SKELDEBUGLEVEL' ) { $skelDebugLevel= $initSkelValue{'SKELDEBUGLEVEL'} ; displayDebug("Value RESET: skelDebugLevel = $skelDebugLevel",1,$currentSubroutine);}
+        elsif ( $var eq 'SKELVERBOSESQLERRORS' ) { $skelVerboseSQLErrors = $initSkelValue{'SKELVERBOSESQLERRORS'} ; displayDebug("Value RESET: skelVerboseSQLErrors = $skelVerboseSQLErrors",1,$currentSubroutine);}
+        elsif ( $var eq 'TESTROUTINES' ) { $testRoutines = $initSkelValue{'TESTROUTINES'} ; displayDebug("Value RESET: testRoutines = $testRoutines",1,$currentSubroutine);}
+        elsif ( $var eq 'INDEXCASEINSENSITIVE' ) { $indexCaseInsensitive = $initSkelValue{'INDEXCASEINSENSITIVE'} ; displayDebug("Value RESET: indexCaseInsensitive = $indexCaseInsensitive",1,$currentSubroutine);} 
+        elsif ( $var eq 'OUTPUTMODE' ) { $outputMode = $initSkelValue{'OUTPUTMODE'} ; displayDebug("Value RESET: outputMode = $outputMode",1,$currentSubroutine);}
+        else { displayError("Variable $var unknown and won't be reset.",$currentSubroutine); }
+      }
+    }
+    
+  }
+  else {
+    displayDebug("Skipped: $card",2,$currentSubroutine);
+  }
+} # end of processRESET 
+
 sub processTAB {
   # -----------------------------------------------------------
   # Routine to process the )TAB (Tab set) control card
@@ -7471,16 +7571,16 @@ sub processTAB {
   # Returns: nothing but establishes the tab control array @tabEntries
   # -----------------------------------------------------------
 
-  my $currentSubroutine = 'processTAB'; 
+  my $currentSubroutine = 'processTAB';
   my $card = shift;                    # get the card information
-  
+
   my @tmpArray;                        # temporary array to load the tabstops into
   @tabEntries = ();                    # clear out any pre-existing tab entries
-  
+
   if ( ( $skelSelSkipCards eq "No" ) && ( $skelDOTSkipCards eq "No" ) ) { # not skipping cards
 
     my $tmpTok = getToken($card);
-    
+
     displayDebug("Token: $tmpTok",3,$currentSubroutine);
     my $i = 0;
     if ( $tmpTok ne "" ) {                        # there are soime tabstops to define
@@ -7496,33 +7596,33 @@ sub processTAB {
         displayDebug("Token: $tmpTok",3,$currentSubroutine);
       }
     }
-    
+
     # array is in but unsorted .... sort it (very ugly sort)
-    
-    for ( 0 .. $#tmpArray ) {                      # for each array element 
+
+    for ( 0 .. $#tmpArray ) {                      # for each array element
       my $largest = 0;                             # initialise largest as the first entry
       for ( my $k = 0 ; $k <= $#tmpArray ; $k++ ) { # loop through the array and determine the greatest value
         displayDebug("Comparing $tmpArray[$largest] ($largest) and $tmpArray[$k] ($k)",3,$currentSubroutine);
-        if ( $tmpArray[$largest] < $tmpArray[$k] ) { 
+        if ( $tmpArray[$largest] < $tmpArray[$k] ) {
           displayDebug("\$largest now set to $largest, $tmpArray[$largest] is less than $tmpArray[$k]",3,$currentSubroutine);
-          $largest = $k; 
-        } 
+          $largest = $k;
+        }
       }
       unshift (@tabEntries, $tmpArray[$largest]);  # push the current largest onto the fromt of the array
       $tmpArray[$largest] = -1;                    # remove the element from the temp array
     }
-    
+
     # @tabEntries should now contain a sorted list of elements
-    
-    if ( $skelDebugLevel > 0 ) { # print out the array 
+
+    if ( $skelDebugLevel > 0 ) { # print out the array
       for ( my $i = 0 ; $i <= $#tabEntries ; $i ++ ) { displayDebug("Tab $i: $tabEntries[$i]",1,$currentSubroutine); }
     }
-    
+
   }
   else {
     displayDebug("Skipped: $card",2,$currentSubroutine);
   }
-} # end of processTAB 
+} # end of processTAB
 
 sub processDOEXEC {
   # -----------------------------------------------------------
@@ -8400,7 +8500,7 @@ sub processSKELVERS {
   # -----------------------------------------------------------
   # Routine to process the SKELVERS statemnent. The format of the statement is:
   #
-  # )SKELVERS  $Id: processSkeleton.pm,v 1.144 2019/07/22 02:32:12 db2admin Exp db2admin $
+  # )SKELVERS  $Id: processSkeleton.pm,v 1.145 2019/07/28 23:48:48 db2admin Exp db2admin $
   #
   # Usage: processVERSION(<control card>)
   # Returns: sets the internal variable skelVers
@@ -8482,7 +8582,7 @@ sub processLOGOFF {
     
     if ( defined($DBConnection) && ( $DBConnection ne '' ) ) { # a connection ID was supplied 
       if ( ! defined($skelConnection{$DBConnection}) ) { #  Connection not found
-        displayError("Connection $DBConnection not found so )LOGOFF card ignored");
+        displayError("Connection $DBConnection not found so )LOGOFF card ignored",$currentSubroutine);
         return;
       }
       # Connection should be closed
@@ -8674,6 +8774,9 @@ sub processControlCard {
     else {
       displayDebug("Skipped: $card",2,$currentSubroutine);
     }
+  }
+  elsif ( $skelCardType eq ")RESET" ) {      # RESET control card - return some control variables back to their original value
+    processRESET($card);
   }
   elsif ( $skelCardType eq ")SET" ) {      # SET control card - assign a value to a skeleton variable (do any computations before assignment)
     processSET($card);
@@ -10498,4 +10601,5 @@ sub processSkeleton {
 } # end of processSkeleton
 
 1;
+
 
