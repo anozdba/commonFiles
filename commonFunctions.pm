@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------
 # commonFunctions.pm
 #
-# $Id: commonFunctions.pm,v 1.57 2019/06/24 04:55:07 db2admin Exp db2admin $
+# $Id: commonFunctions.pm,v 1.58 2019/08/07 23:31:29 db2admin Exp db2admin $
 #
 # Description:
 # Package cotaining common code.
@@ -179,6 +179,9 @@
 #
 # ChangeLog:
 # $Log: commonFunctions.pm,v $
+# Revision 1.58  2019/08/07 23:31:29  db2admin
+# modified timeAdj to allow the inclusion of unit for the duration
+#
 # Revision 1.57  2019/06/24 04:55:07  db2admin
 # convert %2B to + if input from the web (when processing parameters)
 #
@@ -621,12 +624,12 @@ sub getCurrentTimestamp {
 
 # -----------------------------------------------------------------
 # timeAdj - function to return a timestamp with a specified number of
-#           minutes adjusted
+#           units adjusted
 #
-# usage:    timeAdj('2016.09.19 08:05:01','15')
+# usage:    timeAdj('2016.09.19 08:05:01','15 minutes')
 #           the parameters are:
 #               1. timestamp in the format yyyy.mm.dd hh:mm:ss
-#               2. elapsed time in minutes (negative or positive number)
+#               2. elapsed time (negative or positive number)
 # returns:  '2016.09.19 08:20:01'  
 #
 # -----------------------------------------------------------------
@@ -636,38 +639,38 @@ sub timeAdj {
   my $currentRoutine = 'timeAdj';
   my $startTime = shift;
   my $elapsed = shift;
-  $elapsed = int($elapsed); # ensure that the elapsed time is an integer
-  my ($year, $mon, $day, $hr, $min, $sec) = ( $startTime =~ /(\d\d\d\d).(\d\d).(\d\d)[ -](\d\d).(\d\d).(\d\d)/ );
+  my $negative = 0;     # default the sign of the elapsed number
 
-  displayDebug( "Timestamp: $startTime (year: $year, month: $mon, day: $day, hour: $hr, min: $min, secs: $sec). Elapsed: $elapsed", 1, $currentRoutine); 
+  displayDebug( "Input Parameters: $startTime, $elapsed ", 1, $currentRoutine); 
+
+  my @bits = split(" ", $elapsed);
+  if ( ! defined($bits[1]) ) {     # unit of measure not supplied so default one
+    $elapsed = int($elapsed); # ensure that the elapsed time is an integer
+    $elapsed = "$elapsed minutes"; # defaults to minutes
+  }
   
-  # convert timestamp to number of minutes
+  # cope with a negative adjustment
+  if ( substr($elapsed,0,1) eq '-' ) {
+    $negative = 1; 
+    $elapsed = substr($elapsed,1);
+  }
   
-  my @T = myDate("DATE\:$year$mon$day");   # convert date into number of days from the base date
-  my $TS_Minutes = ($T[5] * 1440) + ($hr * 60) + $min;
-  displayDebug( "Base Date Offset: $T[5], TS_Minutes: $TS_Minutes", 1, $currentRoutine); 
+  # change the duration into a timestamp
+  displayDebug( "Passed duration: $elapsed ", 1, $currentRoutine); 
+  my ($isDuration, $durationTS) = processDuration($elapsed,'T');
+  displayDebug( "Returned timestamp: $durationTS", 1, $currentRoutine); 
 
-  # adjust the value 
-  $TS_Minutes = $TS_Minutes + $elapsed; # $elapsed may be positive or negative
-  displayDebug( "Minutes after adjustment: $TS_Minutes", 1, $currentRoutine); 
+  my $result;
+  if ( $negative ) { # subtract the elapsed timestamp from the base timestamp 
+    $result = performTimestampSubtraction( $startTime, $durationTS );
+  }
+  else {
+    $result = performTimestampAddition( $startTime, $durationTS );
+  }
   
-  # Convert the value back to a timestamp .....
-  
-  my $new_days = int($TS_Minutes / 1440) ;         # days past the base date
-  $TS_Minutes = $TS_Minutes - ( $new_days * 1440); # now holds number of minutes past midnight
-  my $new_hours = int($TS_Minutes / 60) ; 
-  displayDebug( "New Days Offset: $new_days, Minutes after midnight: $TS_Minutes", 1, $currentRoutine); 
-  $new_hours = substr('00' . $new_hours, length($new_hours), 2); # pad out to 2 digits
-  $TS_Minutes = $TS_Minutes - ( $new_hours * 60);  # now holds number of minutes past the hour
-  $TS_Minutes = substr('00' . $TS_Minutes, length($TS_Minutes), 2); # pad out to 2 digits
-  displayDebug( "New Hours Offset: $new_hours, Minutes after the hour: $TS_Minutes", 1, $currentRoutine); 
+  displayDebug( "Returned Timestamp: $result", 1, $currentRoutine); 
 
-  # convert the days count back to a gregorian date
-  @T = myDate($new_days);   
-
-  displayDebug( "Returned Date: $T[2].$T[1].$T[0] $new_hours:$TS_Minutes:$sec", 1, $currentRoutine); 
-
-  return "$T[2].$T[1].$T[0] $new_hours:$TS_Minutes:$sec";
+  return $result;
 
 } # end of timeAdj
 
@@ -739,7 +742,7 @@ sub timeDiff {
 
 sub commonVersion {
 
-  my $ID = '$Id: commonFunctions.pm,v 1.57 2019/06/24 04:55:07 db2admin Exp db2admin $';
+  my $ID = '$Id: commonFunctions.pm,v 1.58 2019/08/07 23:31:29 db2admin Exp db2admin $';
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
   (my $name,my $x) = split(",",$nameStr);
@@ -799,7 +802,7 @@ sub testCommonFunctions {
 #     timeAdj
 
   $res = timeAdj('2016.09.19 08:55:01','15');
-  $expectedRes = '2016.09.19 09:10:01';
+  $expectedRes = '2016-09-19 09:10:01';
   if ( $res eq $expectedRes ) {
     displayDebug("All OK - Result of timeAdj('2016.09.19 08:55:01','15') is : $res",0,$currentRoutine);
   }
@@ -3464,4 +3467,5 @@ sub tablespaceStateLit {
 } # end of tablespaceStateLit
 
 1;
+
 
