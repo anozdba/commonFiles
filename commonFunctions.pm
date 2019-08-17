@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------
 # commonFunctions.pm
 #
-# $Id: commonFunctions.pm,v 1.58 2019/08/07 23:31:29 db2admin Exp db2admin $
+# $Id: commonFunctions.pm,v 1.59 2019/08/16 03:52:24 db2admin Exp db2admin $
 #
 # Description:
 # Package cotaining common code.
@@ -179,6 +179,9 @@
 #
 # ChangeLog:
 # $Log: commonFunctions.pm,v $
+# Revision 1.59  2019/08/16 03:52:24  db2admin
+# adjust code for perfrmDateSubtraction to handle short parameters
+#
 # Revision 1.58  2019/08/07 23:31:29  db2admin
 # modified timeAdj to allow the inclusion of unit for the duration
 #
@@ -742,7 +745,7 @@ sub timeDiff {
 
 sub commonVersion {
 
-  my $ID = '$Id: commonFunctions.pm,v 1.58 2019/08/07 23:31:29 db2admin Exp db2admin $';
+  my $ID = '$Id: commonFunctions.pm,v 1.59 2019/08/16 03:52:24 db2admin Exp db2admin $';
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
   (my $name,my $x) = split(",",$nameStr);
@@ -2751,7 +2754,13 @@ sub performDateSubtraction {
   
   # isolate the components
   my ($DT_year, $DT_month, $DT_day) = ( $Date =~ /(\d\d\d\d).(\d\d).(\d\d)/);
-  my ($Dur_year, $Dur_month, $Dur_day, $Dur_hour, $Dur_min, $Dur_sec) = ( $duration =~ /(\d\d\d\d).(\d\d).(\d*)[^\d](\d\d).(\d\d).(\d\d)/);
+  # adjust the duration to be the correct length .....
+  # yyyy-mm-dd hh:mm:ss is 19 bytes long
+  my $templateTS = '2000-01-01 00:00:00';
+  my $extra = substr($templateTS,length($duration),length($templateTS)-length($duration));
+  displayDebug( "Adjusted duration is $duration$extra", 1, $currentRoutine);
+  my ($Dur_year, $Dur_month, $Dur_day, $Dur_hour, $Dur_min, $Dur_sec) = ( "$duration$extra" =~ /(\d\d\d\d).(\d\d).(\d*)[^\d](\d\d).(\d\d).(\d\d)/);
+  displayDebug( "Dur_year=$Dur_year, Dur_month=$Dur_month, Dur_day=$Dur_day", 1, $currentRoutine);
   
   # do the time subtraction
   my $dayAdjust = 0;
@@ -2804,7 +2813,7 @@ sub performDateSubtraction {
     @T = myDate("DATE:$Dur_year$Dur_month$Dur_day");      # now have the #days of the date to subtract
     $numday = $baseToTS - $T[5] - $dayAdjust;      # $numday is now the number of days between the dates
     displayDebug( "The number of days between '$duration' and '$DT_year/$DT_month/$DT_day' is $numday days", 1, $currentRoutine);
-    $day = $numday;
+    $day = abs($numday);
     if ( length($numday) == 1 ) { $day = "0$numday"; }
   }
     
