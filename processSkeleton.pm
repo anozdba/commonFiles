@@ -2,7 +2,7 @@
 # --------------------------------------------------------------------
 # processSkeleton.pm
 #
-# $Id: processSkeleton.pm,v 1.145 2019/07/28 23:48:48 db2admin Exp db2admin $
+# $Id: processSkeleton.pm,v 1.149 2019/08/26 03:11:56 db2admin Exp db2admin $
 #
 # Description:
 # Script to process a skeleton
@@ -31,6 +31,28 @@
 # ChangeLog:
 #
 # $Log: processSkeleton.pm,v $
+# Revision 1.149  2019/08/26 03:11:56  db2admin
+# add in new variable currentDOTRow that will always be the ROW number of the current cursor
+#
+# Revision 1.148  2019/08/16 04:13:40  db2admin
+# 1. upgrade testRoutineto allow the use of alternate skeletons
+# 2. add in code for DATEDIFF function
+# 3. Change value returned on DATEADJ parameter failure
+# 4. correct header value for FXDOF
+#
+# Revision 1.147  2019/08/13 06:09:37  db2admin
+# 1. added in new routine displayDataVertically
+# 2. added in new routine processFVDOF
+# 3. modified the parameter description for FXTAB
+# 4. implement the HREF option for FXTAB to supply a link from the cells
+# 5. correct heading for the cross tab table
+# 6. added in new routine processFXDOF (initial coding)
+# 7. establish new variable LASTDOTCount
+# 8. establish code to catch an unmatched )END_OF_INLINE
+#
+# Revision 1.146  2019/08/09 00:19:18  db2admin
+# implement HREF parameter in the FXTAB statement to allow links to be automatically generated
+#
 # Revision 1.145  2019/07/28 23:48:48  db2admin
 # a couple of changes:
 # 1. allow )LOGOFF to specify no connections - in this case it will close ALL open connections
@@ -586,7 +608,7 @@ use strict;
 use warnings;
 use Data::Dumper qw(Dumper);
 use User::pwent; # for getpwuid and getgrnam
-use commonFunctions qw(trim ltrim rtrim commonVersion getOpt myDate $getOpt_web $getOpt_optName $getOpt_min_match $getOpt_optValue getOpt_form @myDate_ReturnDesc $cF_debugLevel $getOpt_calledBy $parmSeparators processDirectory $maxDepth $fileCnt $dirCnt localDateTime displayMinutes timeDiff  timeAdj convertToTimestamp getCurrentTimestamp performDateAddition performDateSubtraction processDuration);
+use commonFunctions qw(trim ltrim rtrim commonVersion getOpt myDate $getOpt_web $getOpt_optName $getOpt_min_match $getOpt_optValue getOpt_form @myDate_ReturnDesc $cF_debugLevel $getOpt_calledBy $parmSeparators processDirectory $maxDepth $fileCnt $dirCnt localDateTime displayMinutes timeDiff  timeAdj convertToTimestamp getCurrentTimestamp performDateAddition performDateSubtraction processDuration isValidDate);
 use calculator qw(calcVersion evaluateInfix $calcDebugLevel $calcDebugModules $calc_errorToSTDOUT);
 use Exporter;
 # use Data::UUID;           # only useful if package installed
@@ -809,7 +831,10 @@ sub testRoutine {
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'testRoutine'; 
+  my $skelFile = shift;
   my $testString = "";
+
+  if ( ! defined($skelFile) ) { $skelFile = 'testProcessSkeleton.skl'; }
 
   if ( oct($testRoutines) & oct('0b0000000000000001') ) { # remove unnecessary whitespace test
     my $b = "test  of the     whitespace '    '' '   remover\t\t\ttest";
@@ -861,7 +886,7 @@ sub testRoutine {
   }
 
   if ( oct($testRoutines) & oct('0b0000000000000100') ) { # loadSkeleton test
-    my $skelName = 'testProcessSkeleton.skl';
+    my $skelName = $skelFile;
     loadSkel('global',$skelName);
 
     displayDebug("Array being Used for $skelName is $skelArray{$skelName}",0,$currentSubroutine);
@@ -892,7 +917,7 @@ sub testRoutine {
   $DBIModule = "DB2";
 
   if ( $outputMode eq "STDOUT" ) {
-    my $a = processSkeleton('testProcessSkeleton.skl');
+    my $a = processSkeleton($skelFile);
     if ( $outputMode ne "STDOUT" ) { # mode changed in skeleton ...
       print "==========================================\n";
       print "output mode changed in skeleton .....\nReturned string is:\n$a\n";
@@ -919,7 +944,7 @@ sub skelVersion {
   # -----------------------------------------------------------
 
   my $currentSubroutine = 'skelVersion'; 
-  my $ID = '$Id: processSkeleton.pm,v 1.145 2019/07/28 23:48:48 db2admin Exp db2admin $';
+  my $ID = '$Id: processSkeleton.pm,v 1.149 2019/08/26 03:11:56 db2admin Exp db2admin $';
   my @V = split(/ /,$ID);
   my $nameStr=$V[1];
   my @N = split(",",$nameStr);
@@ -1388,6 +1413,9 @@ sub displayError {
   my $tmpLine = $currentSkelLine + 1;
   
   if ( ! defined($sub) ) { $sub = "Unknown Subroutine" } # if nothing passed then default
+
+  if ( length($sub) > $maxSubroutineLen ) { $maxSubroutineLen = length($sub) ; }       # reset length as necessary
+  $sub = substr($sub . '                                                                 ',0,$maxSubroutineLen);  # pad out subroutine name as necessary
 
   if ( ! defined( $lit ) ) { # Nothing to display so just display the date and time
     if ( $pskl_errorToSTDOUT ) {
@@ -2462,6 +2490,15 @@ sub substituteVariables {
             $skelFieldValue = $testRoutines; 
             $skelFieldFound = "Yes";
           }
+          elsif ( uc($varName) eq 'CURRENTDOTROW' ) { 
+            if ( defined ($cursorRowNumber{$currentCursorConnection}) ) { # set the value
+              $skelFieldValue = $cursorRowNumber{$currentCursorConnection}; 
+            }
+            else { # flag it as not valid
+              $skelFieldValue = -1;
+            }
+            $skelFieldFound = "Yes";
+          }
           elsif ( uc($varName) eq 'INDEXCASEINSENSITIVE' ) { 
             $skelFieldValue = $indexCaseInsensitive; 
             $skelFieldFound = "Yes";
@@ -2784,13 +2821,17 @@ sub readDataFileRecord {
   my $ctlCard = shift;
   my $txt = <$fh>;
   if ( defined($txt) ) { 
-    if ( $ctlCard eq 'F' ) { 
+    if ( $ctlCard eq 'F' ) { # [from )DOF]
       $skelFileStatus{$fileRef}++;  # if a record was returned then increment the record count
+      setVariable('LASTDOFCount',$skelFileStatus{$fileRef});
     }
-    else { # should be a value of 'E'
+    elsif ( $ctlCard eq 'E' ) { # [from )DOEXEC]
       $skelExecStatus{$fileRef}++;  # if a record was returned then increment the record count
     }
     chomp $txt;
+  }
+  else { # no more data - close the file ....
+    close $fh;
   }
   return $txt;
   
@@ -3127,6 +3168,127 @@ sub displayDataHorizontally {
   
 } # end of displayDataHorizontally
 
+sub displayDataVertically {
+  # -----------------------------------------------------------
+  # Routine to print out a row of data vertically from a file 
+  #
+  # Usage: displayDataVertically(<file ref>, <data record>)
+  # Returns: nothing but will print out a vertically formatted dump of a record
+  # -----------------------------------------------------------  
+  
+  my $currentSubroutine = 'displayDataVertically';
+  
+  my $fileRef = shift;              # file reference to use
+  my $fileRecord = shift;           # data record to print
+  
+  my $tStr = '';                    # initialise theoutput String
+  
+  my @delimArr;                     # dont confuse it with anything else
+  
+  displayDebug('Data goes here, ' . $fileRef . ' = ' . $fileRecord,2,$currentSubroutine );     # display what is available
+  
+  my $numCTLLines = $#{$ctlLines[$ctlArray{$fileRef}]} + 1;                   # set the number of lines in the array slice for this fileRef
+  for ( my $i=0 ; $i<$numCTLLines; $i++ ) {                                   # for each control line (which should equate to a field)
+    displayDebug("CTL Field Array Entry being Processed: $ctlLines[$ctlArray{$fileRef}][$i]",1,$currentSubroutine);
+    my $ctlCard = $ctlLines[$ctlArray{$fileRef}][$i];                         # place the card into a variable for easier typing
+    my $delimiter = substr($ctlCard,0,1);                                     # first char is the delimiter
+    
+    # break the preparse ctl line into it's parts (maximum of 8 parts)
+    my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8); 
+    displayDebug("delimType is $delimType, fldName is $fldName, fldStart is $fldStart, fldLen is $fldLen, condStart is >$condStart<",1,$currentSubroutine);
+    
+    if ( uc($delimType) eq "DELIMITED" ) {                                     # it is a delimited control record .... split up the data record to save time
+      $fldStart = '\\' . $fldStart;
+      @delimArr = ();                                                          # initialise an array to hold the delimiter conditions
+      @delimArr = split("$fldStart", $fileRecord);                               # for a delimited record the 4th parm is the delimiter so split the data record based on that
+    }
+
+    my $setVar = "No";                                                         # defaults to NOT processing the record
+    my $testValue = '';                                                        # value obtained to be tested against a condition
+    
+    if ( $condStart ne "" ) {                                                  # condition was supplied so check if we want to process this data card
+      if ( uc($condStart) eq "DELIMITED" ) {                                   # delimited condition
+        if ( defined($delimArr[$condLen]) ) {                                  # If the condition field exists ....
+          $testValue = $delimArr[$condLen];                                    # assign the value to the test field
+        }
+        else { # test field doesn't exist
+          $testValue = "KCKCTESTFAILEDKCKC";                                   # make up a value for the test value
+        }
+      }
+      else { # not a delimited value ....
+        if ( $condStart > length($fileRecord)) {                               # field start outside record
+          $testValue = "KCKCTESTFAILEDKCKC";                                   # make up a value for the test value
+        }
+        elsif ( $condStart + $condLen > length($fileRecord) ) {                # field end outside record
+          $testValue = substr($fileRecord, $fldStart);
+        }
+        else { # all looks good
+          $testValue = substr($fileRecord, $fldStart, $fldLen) ;               # assign the value to the test field
+        }
+      }
+
+      if ( $testValue eq "KCKCTESTFAILEDKCKC" ) {                              # check if the test value was set
+        if ( $condNULLisMatch ) {                                              # indicates that a 'not found' is a match
+          $setVar = "Yes";                                                     # process this record
+        }
+      }
+      else {                                                                   # it was a valid value
+        if ( evaluateCondition($testValue . $condValue) eq "True" ) {          # Check if the condition holds
+          $setVar = "Yes";
+        }
+      }
+    }
+    else { # no condition so just set the variable
+      $setVar = "Yes";
+    }
+
+    displayDebug("length(\$fileRecord) is " . length($fileRecord),1,$currentSubroutine);
+    
+    my $fldValue = 'NULL';                                    # variable holds the value of the defined field
+    if ( $setVar eq "Yes" ) {                                 # the variable has passed all conditional processing
+      if ( uc($delimType) eq "FIXED" ) {                      # field is defined in fixed positions
+        if ( $fldStart > length($fileRecord)) {               # field starts outside record
+          $fldValue = "NULL";                                 # assign it a null string
+        }
+        elsif ( $fldStart + $fldLen > length($fileRecord) ) { # field end outside record
+          $fldValue = substr($fileRecord, $fldStart);         # assign it a truncated value
+        }
+        else {
+          $fldValue = substr($fileRecord, $fldStart, $fldLen) ;  # assign it the right value
+        }
+      }
+      else { # it is a delimited field
+    if ( defined($delimArr[$fldLen]) ) {                     # Note: the data record has previously been split
+      $fldValue = $delimArr[$fldLen];                        # assign it the right value
+        }
+    else { # not enough values in the record
+      $fldValue = "NULL";
+    }
+      }
+      # and now just set the value for the variable ....
+      displayDebug("Displaying variable $fldName which has a value of $fldValue",1,$currentSubroutine);
+    } 
+    
+    # now print out the value returned
+    
+    if ( $outputMode eq "HTTP" ) {                          # output it as a html table cell
+      # check if special styling is required for this cell
+      $currentCellStyle = checkCellStyleSetting($fldName);      # see what style should be used
+      if ( isNumeric($fldValue) ) { # right align numeric fields
+        outputLine("<tr  $currentRowStyle><td>$fldName</td><td $currentCellStyle align=\"right\">" . $fldValue . "</td></tr> ");
+      }
+      else { # character field ... just normal left alignment
+        outputLine("<tr  $currentRowStyle><td>$fldName</td><td  $currentCellStyle>" . $fldValue . "</td></tr> ");
+      }
+    }
+    else { # just write it out to normal output
+      outputLine("!" . $fldName . "!" . $fldValue);
+    }
+
+  } # end of for
+  
+} # end of displayDataVertically
+
 sub processPARSE {
   # -----------------------------------------------------------
   # Routine to parse a variable/string into other variables
@@ -3274,8 +3436,9 @@ sub headerise {
   
   my $currentSubroutine = 'headerise';
   my $header = shift;                                            # establish the card being processed
-  
+
   if ( ! defined($header) ) { return ''; }  # shouldn't really happen as always shouldhave something
+  if ( ! $convertHeaders ) { return $header; } # only convert if requested to
   
   $header =~ s/_/ /g;       # convert '_' to spaces
   $header = lc($header);    # convert all chars to lower case
@@ -3481,6 +3644,160 @@ sub processFDOF {
   }
 
 } # end of processFDOF
+
+sub processFVDOF {
+  # -----------------------------------------------------------
+  # Routine to print out a formatted dump of a file vertically
+  #
+  # The FDOF control statement looks like:
+  #        )FVDOF [<fileName> [using <CTLFileName>]]
+  #     
+  #        where filename   : the file to be read
+  #              CTLFileName: the control file defining the structure of the file       
+  #
+  #        defaults are: file ref   : inFile
+  #                      filename   : inFile.txt 
+  #                      CTLFileName: inFile.ctl 
+  #
+  # Usage: processFVDOF(<control Card>)
+  # Returns: nothing but will print out a vertically formatted dump of a table
+  # -----------------------------------------------------------  
+  
+  my $currentSubroutine = 'processFVDOF';
+  my $card = shift;                                            # establish the card being processed
+  
+  if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
+    if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
+    
+      # ok to process the card .....
+
+      setVariable('LASTFVDOFCount','0');                       # initialise variable
+      my $fileRef = 'FVDOFRef';                                # file ref for a FDOF is fixed as FDOFRef    
+      my $fileName = getToken($card);                          # (FILENAME) nameof the file to be opened
+      my $lit = getToken($card);                               # should be the literal 'USING'
+      my $CTLFileName = getToken($card);                       # (CTLFILENAME) The file name holding the control information describing the file
+
+      if ( uc($lit) ne 'USING' ) { # USING is missing from where it should be
+        displayError("USING literal missing it will be assumed to be the second parameter (which will now be ignored)",$currentSubroutine);
+        displayError("Format of the )FVDOF is  )FVDOF [<fileName> [using <CTLFileName>]]",$currentSubroutine);
+      }
+      
+      # set default values if necessary
+      if ( $fileName eq '' ) { $fileName = 'inFile.txt' };
+      if ( $CTLFileName eq '' ) { $CTLFileName = 'inFile.ctl' };
+      
+      # process the )FVDOF statement and set parameters
+      # generate the full file name ....
+      my $skelCTLFullName = '';                            # Will contain the full CTL file name
+      my $skelDataFullName = '';                           # Will contain the full Data file name
+      
+      # generate the Data File full name
+      my $skelDataDir = $ENV{'SKLDATADIR'};
+      if ( ! defined($skelDataDir) ) { $skelDataDir = ''; } 
+      if ( $skelDataDir eq "" ) {                          # just use the supplied names
+        $skelDataFullName = $fileName;
+      }
+      elsif ( substr($skelDataDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+        $skelDataFullName = "$skelDataDir$fileName";
+      }
+      else { # no separator so add one
+        $skelDataFullName = "$skelDataDir$dirSep$fileName";
+      }
+      # load the control cards
+      if ( (uc($CTLFileName) =~ "^INLINE\:|^INLINE\=") || ( uc($CTLFileName) eq 'INLINE') ) {    # does the ctl file start with either INLINE: or INLINE= or is just the word INLINE
+        loadInlineFileCTL($fileRef);             # load the CTL file
+      }
+      else { # it is a real file
+        # generate the CTL File full name
+        my $skelCTLDir = $ENV{'SKLCTLDIR'};
+        if ( ! defined($skelCTLDir) ) { $skelCTLDir = ''; }
+        if ( $skelCTLDir eq "" ) {                          # just use the supplied names
+          $skelCTLFullName = $CTLFileName;
+        }
+        elsif ( substr($skelCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+          $skelCTLFullName = "$skelCTLDir$CTLFileName";
+        }
+        else { # no separator so add one
+          $skelCTLFullName = "$skelCTLDir$dirSep$CTLFileName";
+        }
+  
+        displayDebug("Data file will be $skelDataFullName, CTL file will be $skelCTLFullName",1,$currentSubroutine);
+        # now load the control file .....
+        loadFileCTL($fileRef, $skelCTLFullName);
+  
+      }
+    
+      # save the current file ref
+      $currentFileRef = $fileRef;
+
+      if ( defined ($ctlArray{$fileRef} ) ) {              # control file was loaded
+
+        # now open the file and read in the first record ....
+        if ( !open ( $skelFileHandle{$fileRef}, "<", "$skelDataFullName" ) ) {
+          # file not found (possibly)
+          displayError("Unable to open $skelDataFullName.\nError: $?",$currentSubroutine);
+        }
+        else { # The file does at least exist 
+         
+         # print out teh start table stuff ....
+
+          if ( $outputMode eq "HTTP" ) {  # output it as a html table
+            $FTABNumber++;
+            outputLine("<table border=\"1\" id=\"FTAB$FTABNumber\">\n");                   # output the start of table information
+          }
+          else {
+            outputLine("\n");                                           # just doa new line
+          }
+          
+          # print out the data .....
+          
+          $skelFileStatus{$fileRef} = 0;                         # initialise the row counter (if it stays 0 it will mean the file is empty, otherwise it will be incremented by readDataFileRecord)
+          # save the file handle
+          my $skelFileRecord = readDataFileRecord($skelFileHandle{$fileRef}, $fileRef, 'F');
+          while ( defined($skelFileRecord) ) {                   # there is data to process
+            setVariable('LASTFVDOFCount',$skelFileStatus{$fileRef});
+            setDefinedVariablesForFile($fileRef, $skelFileRecord); # Set all of the variables
+            
+            # check if the row is selected for processing
+            if ( $selectCond eq '' ) { # no selection so print data
+              displayDataVertically($fileRef, $skelFileRecord);  # display all of the variables
+            }
+            elsif ( evaluateCondition(substituteVariables($selectCond)) ) { # condition returned true
+              displayDataVertically($fileRef, $skelFileRecord);  # display all of the variables
+            }
+            $skelFileRecord = readDataFileRecord($skelFileHandle{$fileRef}, $fileRef, 'F'); # read the next record
+          } 
+          
+          # print out the trailing stuff ....
+
+          if ( $outputMode eq "HTTP" ) {  # output it as a html table
+            outputLine("</table>\n");         # terminate the HTML table
+          }
+          else {
+            outputLine("\n");                                           # just doa new line
+          }
+          setVariable('LASTFVDOFCount',$skelFileStatus{$fileRef});
+          $selectCond = '';              # turn off any prevailing select conditions (they only last one use)
+          
+          undef $skelFileHandle{$fileRef};                       # undefine the file handle to free it up
+          undef $skelFileStatus{$fileRef};                       # undefine the status entry
+        }
+# leave the ctl files loaded in cache in case they are reused
+#        undef $ctlLines[$ctlArray{$fileRef}];              # clear out the array holding the control cards
+#        delete $ctlArray{$fileRef};                        # clear out the control file reference number
+      }
+      else { # control file wasn't loaded so nothing can be done ... just skip the card
+      }
+    }
+    else { # Skipped because within a failed or empty  )DOT
+      displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+    }
+  }
+  else { # Skipped because within a failed )SEL
+    displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+  }
+
+} # end of processFVDOF
 
 sub processGRAPHLIB {
   # -----------------------------------------------------------
@@ -5341,7 +5658,7 @@ sub processGetCookie {
 
 sub processHeading {
   # -----------------------------------------------------------
-  # Routine to print out c$the headings for a FTAB statement
+  # Routine to print out the headings for a FTAB statement
   #
   # Usage: processHeading(<control Card>)
   # Returns: nothing but will print out a horizontally formatted dump of a table
@@ -5688,9 +6005,10 @@ sub processFXTAB {
   #
   # Action basically defines how the crosstabulated data will be handled. It is either
   #
-  #     1. SUM, AVG, MIN, MAX or CNT
-  #     2. MRK:XY  (where X and Y are the characters to be used to indicate a value or (0 or NULL ) respoectively)
-  #     3. CHK:<target CGI script>
+  #     1. ZZZ - where ZZZ is one of SUM, AVG, MIN, MAX or CNT
+  #     2. ZZZ:HREF:<target CGI script> [the target CGI script can use literals 'ROWNAME' and 'COLNAME' - substitute variables are only processed at the start]
+  #     3. MRK[:XY]  (where X and Y are the characters to be used to indicate a value or (0 or NULL ) respoectively)
+  #     4. MRK[:XY}:HREF:<target CGI script> [the target CGI script can use literals 'ROWNAME' and 'COLNAME' - substitute variables are only processed at the start]
   #
   # The SQL Statement should return 3 columns.
   #
@@ -5701,7 +6019,7 @@ sub processFXTAB {
   # Usage: processFXTAB(<control Card>)
   # Returns: nothing but will print out a cross tabulated version of the returned data
   #         
-  # Note: Maily useful for small amounts of data 
+  # Note: Mainly useful for small amounts of data 
   # -----------------------------------------------------------  
   
   my $currentSubroutine = 'processFXTAB';
@@ -5715,6 +6033,8 @@ sub processFXTAB {
   my $actionType = 'SUM';                                      # defines how duplicates will be handled
   my $MRKEntry = 'X';
   my $MRKEmpty = ' ';
+  my $HREFEntry = '';                                          # will be set if a link is required from the href entry
+  my $firstColHeader = '';
   
   my %colData = ();                                            # initialise the array to hold the table data
   my %colDataCount = ();                                       # array to old the count of the number of entries
@@ -5727,21 +6047,54 @@ sub processFXTAB {
       # check to see if an action type has been set .....
       
       my @typeCheck = split(" ",$SQL);
-      if ( " SUM AVG MIN MAX CNT " =~ uc($typeCheck[0]) ) { # if the first word in the string is a known action type
-        $actionType = uc($typeCheck[0]);
+      if ( uc($typeCheck[0]) =~ /HREF/ ) { # the xref entry will be a link to another page
         $SQL = trim(substr($SQL,length($typeCheck[0])));      # remove the action type from the SQL string
+        my @parts = split("\:",$typeCheck[0]);
+        if (  " SUM AVG MIN MAX CNT MRK " =~ uc($parts[0]) ) {    # if the first word in the string is a known action type
+          $actionType = uc($parts[0]);
+          if ( uc($parts[1]) eq 'HREF' ) { # straight into the link
+            if ( defined($parts[2]) ) { $HREFEntry = $parts[2]; } # only assign it if it exists
+            else {displayError("href link missing - href will be ignored",$currentSubroutine); }
+	      }
+	      else { # to be here the action MUST be MRK
+	        if ( defined($parts[2]) && uc($parts[2]) eq 'HREF' ) { # All is good with the world (parts[1] contains the markers)
+              $MRKEntry = substr("$parts[1] ",0,1);      # space fill in case it is too short
+              $MRKEmpty = substr("$parts[1]  ",1,1);     # space fill in case it is too short
+              if ( defined($parts[3]) ) { $HREFEntry = $parts[3]; } # only assign it if it exists
+  	          else {displayError("href link missing - href will be ignored",$currentSubroutine); }
+	        }
+	        else { # the action field is malformed - skip it
+              displayError("Cant decipher the action - action will be ignored",$currentSubroutine);
+	        }
+	      }
+	    }
+	    else { # it may just be using the defaults (which is SUM)
+	      if ( uc($parts[0]) eq 'HREF' ) { # it is just a href reference
+	        if ( defined($parts[1]) ) { $HREFEntry = $parts[1]; } # only assign it if it exists
+	        else {displayError("href link missing - href will be ignored",$currentSubroutine); }
+          }
+          else { # put out a warning and ignore this part		  
+            displayError("Cant decipher the action - action will be ignored",$currentSubroutine);
+	      }
+	    }
       }
-      elsif ( uc(substr($SQL,0,3)) eq 'MRK' ) { # probably of the form MRK[:....] SELECT ......
-        $actionType = 'MRK';
-        if ( length($typeCheck[0]) == 5 ) { # one parameters
-          $MRKEntry = substr($typeCheck[0],4,1);
-          $MRKEmpty = ' ';
+      else { # no HREF reference
+        if ( " SUM AVG MIN MAX CNT " =~ uc($typeCheck[0]) ) { # if the first word in the string is a known action type
+          $actionType = uc($typeCheck[0]);
+          $SQL = trim(substr($SQL,length($typeCheck[0])));      # remove the action type from the SQL string
         }
-        elsif ( length($typeCheck[0]) > 5 ) { # two parameters
-          $MRKEntry = substr($typeCheck[0],4,1);
-          $MRKEmpty = substr($typeCheck[0],5,1);
-        }
-        $SQL = trim(substr($SQL,length($typeCheck[0])));      # remove the action type from the SQL string
+        elsif ( uc(substr($SQL,0,3)) eq 'MRK' ) { # probably of the form MRK[:....] SELECT ......
+          $actionType = 'MRK';
+          if ( length($typeCheck[0]) == 5 ) { # one parameters
+            $MRKEntry = substr($typeCheck[0],4,1);
+            $MRKEmpty = ' ';
+          }
+          elsif ( length($typeCheck[0]) > 5 ) { # two parameters
+            $MRKEntry = substr($typeCheck[0],4,1);
+            $MRKEmpty = substr($typeCheck[0],5,1);
+          }
+          $SQL = trim(substr($SQL,length($typeCheck[0])));      # remove the action type from the SQL string
+	    }
       }
       
       # load up the SQL if it is in a file
@@ -5767,6 +6120,7 @@ sub processFXTAB {
             outputLine("No Data Returned"); 
           }
           else { # a row was returned
+	        $firstColHeader = $skelCursor{'FXTAB'}->{NAME}->[1];
             displayDebug("Rows returned",2,$currentSubroutine);
             $num_of_fields = $skelCursor{'FXTAB'}->{NUM_OF_FIELDS};   # establish the number of columns returned
             displayDebug("Number of fields = $num_of_fields\n",2,$currentSubroutine);
@@ -5837,9 +6191,9 @@ sub processFXTAB {
           
             if ( $outputMode eq "HTTP" ) {  # output it as a html table
               $FTABNumber++;
-              outputLine("<table border=\"1\" id=\"FTAB$FTABNumber\"><tr><td></td>\n");
+              outputLine("<table border=\"1\" id=\"FTAB$FTABNumber\"><tr><th>$firstColHeader</th>\n");
               foreach my $key1 ( sort keys %colData ) {
-              outputLine("<th>$key1</th>");
+                outputLine("<th>$key1</th>");
                 foreach my $key2 (keys %{ $colData {$key1}} ) {
                   $revColData {$key2} { $key1} = $colData {$key1} {$key2};
                 }
@@ -5847,26 +6201,31 @@ sub processFXTAB {
               outputLine("</tr>\n");
             
               # heading now output so now dump the data .....
+			  my $tmpHREF; 
               
               foreach my $rowKey ( sort keys %revColData ) { # for each row element
                 outputLine("<tr><td>$rowKey</td>\n");
                 foreach my $headKey ( sort keys %colData ) { # loop through available columns
+		  $tmpHREF = $HREFEntry;
+		  if ( $HREFEntry ne '' ) { # references should be generated - so do substitutions now
+		    $tmpHREF =~ s/ROWNAME/$rowKey/g;
+		    $tmpHREF =~ s/COLNAME/$headKey/g;
+		  }
+		  my $tmpValue;
                   if ( defined ($revColData {$rowKey} {$headKey} ) ) { # element exists
-                    my $tmpRCD = $revColData {$rowKey} {$headKey};
-                    if ( $actionType eq 'MRK' ) { 
-                      outputLine("<td>$MRKEntry</td>");
-                    }
-                    else {
-                      outputLine("<td>$tmpRCD</td>");
-                    }
-                  }
-                  else { # element doesn't existA
-                    if ( $actionType eq 'MRK' ) { 
-                      outputLine("<td>$MRKEmpty</td>");
-                    }
-                    else {
-                      outputLine("<td>-</td>");
-                    }
+                    $tmpValue = $revColData {$rowKey} {$headKey};
+                    if ( $actionType eq 'MRK' ) { $tmpValue = $MRKEntry; }
+		  }
+		  else {
+		    $tmpValue = '-';
+                    if ( $actionType eq 'MRK' ) { $tmpValue = $MRKEmpty; }
+		  }
+				  
+		  if ( $tmpHREF ne '' ) { # address link should be put in
+                    outputLine("<td><a href=\"$tmpHREF\">$tmpValue</a></td>");
+		  }
+		  else { # just output the plain entry
+                    outputLine("<td>$tmpValue</td>");
                   }
                 }
                 outputLine("</tr>\n");
@@ -5877,7 +6236,7 @@ sub processFXTAB {
             else { # just put out data to the terminal
               my $a =  Dumper \%colData;
               displayDebug($a,2,$currentSubroutine);
-              my $outLine = '!';
+              my $outLine = '!' . $firstColHeader;
               outputLine("");
               foreach my $key1 ( sort keys %colData ) {
                 $outLine .= "\!$key1";
@@ -5899,7 +6258,7 @@ sub processFXTAB {
                     my $tmpRCD = $revColData {$rowKey} {$headKey};
                     $outLine .= "\!$tmpRCD";
                   }
-                  else { # element doesn't existA
+                  else { # element doesn't exist
                     $outLine .= "\!-";
                   }
                 }
@@ -5937,6 +6296,371 @@ sub processFXTAB {
     displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
   }
 } # end of processFXTAB
+
+sub processFXDOF {
+  # -----------------------------------------------------------
+  # Routine to print out a formatted cross tabulation of data in a file
+  #
+  # The FXDOF control statement looks like )FXDOF <fileName> [ACTION] [using <CTLFileName>]
+  #
+  # Action basically defines how the crosstabulated data will be handled. It is either
+  #
+  #     1. ZZZ where ZZZ is one of SUM, AVG, MIN, MAX or CNT
+  #     2. MRK:XY  (where X and Y are the characters to be used to indicate a value or (0 or NULL ) respectively)
+  #     3. ZZZ:HREF:<target CGI script> [the target CGI script can use literals 'ROWNAME' and 'COLNAME' - substitute variables are only processed at the start]
+  #     4. MRK[:XY}:HREF:<target CGI script> [the target CGI script can use literals 'ROWNAME' and 'COLNAME' - substitute variables are only processed at the start]
+  #
+  # The Control file must contain at least 3 fields. Fields after the third are ignored
+  #
+  # The first field defines the heading under which the data should be displayed (the columns)
+  # The second field defines the row label against which this data should be displayed (the rows)
+  # The third field defines the data to be cross tabulated (the individual cells)
+  #
+  # Usage: processFXDOF(<control Card>)
+  # Returns: nothing but will print out a cross tabulated version of the returned data
+  #         
+  # Note: Mainly useful for small amounts of data 
+  # -----------------------------------------------------------  
+  
+  my $currentSubroutine = 'processFXDOF';
+  my $tStr = "";                                               # this string will hold the generated output line
+  my $skelTabValue = '';                                       # value of the column
+
+  my $card = shift;
+
+  my $fileRef = 'FXDOFRef';                                    # file ref for a FDOF is fixed as FDOFRef    
+  my $fileName = getToken($card);                              # (FILENAME) name of the file to be opened
+  my $action = getToken($card);                                # (ACTION) action to take to merge values
+  my $lit = getToken($card);                                   # should be the literal 'USING'
+  if ( $lit eq '' ) { $lit = 'USING' } ;                       # set it to using to allow a default value for ctlfile name
+  my $CTLFileName = getToken($card);                           # (CTLFILENAME) The file name holding the control information describing the file
+  
+  my $actionType = 'SUM';                                      # defines how duplicates will be handled
+  my $MRKEntry = 'X';
+  my $MRKEmpty = ' ';
+  my $HREFEntry = '';                                          # will be set if a link is required from the href entry
+  my $firstColHeader = '';
+    
+  my %colData = ();                                            # initialise the array to hold the table data
+  my %colDataCount = ();                                       # array to hold the count of the number of entries
+  my %revColData = ();                                         # initialise the reverse array
+  
+  if ( $skelSelSkipCards eq "No" ) {                           # not skipping cards because of a failed )SEL
+    if ( $skelDOTSkipCards eq "No" ) {                         # Not within a )DOT being skipped
+      
+      # ok to process the card .....
+
+      setVariable('LASTFXDOFCount','0');                        # initialise variable
+
+      if ( $fileName eq '' ) { # filename is missing
+        displayError("filename MUST be provided on )FXDOF",$currentSubroutine);
+        displayError("Format of the )FXDOF is  )FXDOF <fileName> [Action] [using <CTLFileName>]",$currentSubroutine);
+      }
+      
+      if ( uc($action) eq 'USING' ) { # no action supplied
+        $CTLFileName = $lit;
+        $lit = $action;
+        $action = '';
+      }
+      else { # action may have been supplied
+        my @parts = split("\:",$action);
+        if (  " SUM AVG MIN MAX CNT " =~ uc($parts[0]) ) {    # if the first word in the string is a known action type
+          $actionType = uc($parts[0]);
+          if ( defined($parts[1]) ) { # another parameter exists
+            if ( uc($parts[1]) eq 'HREF' ) { # All is good with the world 
+              if ( defined($parts[2]) ) { $HREFEntry = $parts[2]; } # only assign it if it exists
+  	          else {displayError("href link missing - href will be ignored",$currentSubroutine); }
+            }
+            else {
+              displayError("HREF is the only allowable 2nd parameter on the FXDOF statement - it will be ignored",$currentSubroutine);
+            }
+          }
+          else { # no more parms is fine
+          }
+        }
+        elsif ( uc($parts[0]) eq 'MRK' ) { # can be of the form MRK:XY:HREF:link
+          $actionType = uc($parts[0]);
+          if ( defined $parts[1] ) { # something is there - could be the MRK characters or a HREF
+            if ( uc($parts[1]) eq 'HREF' ) { 
+              if ( defined($parts[2]) ) { $HREFEntry = $parts[2]; } # only assign it if it exists
+  	          else {displayError("href link missing - href will be ignored",$currentSubroutine); }
+            }
+            else { # treat the parm as markers (may be followed by HREF)
+              $MRKEntry = substr("$parts[1] ",0,1);      # space fill in case it is too short
+              $MRKEmpty = substr("$parts[1]  ",1,1);     # space fill in case it is too short
+              if ( defined($parts[2]) ) { # there is another parameter
+   	            if ( uc($parts[2]) eq 'HREF' ) { # All is good with the world 
+                  if ( defined($parts[3]) ) { $HREFEntry = $parts[3]; } # only assign it if it exists
+    	          else {displayError("href link missing - href will be ignored",$currentSubroutine); }
+                }
+                else { # should have been a HREF - if not error
+                  displayError("3rd parm can only be HREF - href will be ignored",$currentSubroutine);
+                }
+              }
+              else { # all ok with no more parameters
+              }
+            }
+          }
+          else { # all ok with no parameters
+          }
+        }
+        else { # it should be HREF
+          if ( uc($parts[0]) eq 'HREF' ) { # default action with a HREF
+            $actionType = uc($parts[0]);
+            if ( defined($parts[1]) ) { $HREFEntry = $parts[1]; } # only assign it if it exists
+            else {displayError("href link missing - href will be ignored",$currentSubroutine); }
+          }
+          else { # it should have been HREF
+            displayError("invalid action type (must be HREF, MRK, SUM, AVG, MIN, MAX, or CNT - it will be ignored",$currentSubroutine);
+          }
+        }
+      }
+      
+      if ( uc($lit) ne 'USING' ) { # USING is missing from where it should be
+        displayError("USING literal missing. Processing for this statement STOPS",$currentSubroutine);
+        displayError("Format of the )FXDOF is  )FXDOF <fileName> [Action] [using <CTLFileName>]",$currentSubroutine);
+        return;
+      }
+      
+      # set default values if necessary
+      if ( $CTLFileName eq '' ) { $CTLFileName = 'inFile.ctl' };
+      
+      # process the )FXDOF statement and set parameters
+      # generate the full file name ....
+      my $skelCTLFullName = '';                            # Will contain the full CTL file name
+      my $skelDataFullName = '';                           # Will contain the full Data file name
+      
+      # generate the Data File full name
+      my $skelDataDir = $ENV{'SKLDATADIR'};
+      if ( ! defined($skelDataDir) ) { $skelDataDir = ''; } 
+      if ( $skelDataDir eq "" ) {                          # just use the supplied names
+        $skelDataFullName = $fileName;
+      }
+      elsif ( substr($skelDataDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+        $skelDataFullName = "$skelDataDir$fileName";
+      }
+      else { # no separator so add one
+        $skelDataFullName = "$skelDataDir$dirSep$fileName";
+      }
+
+      # load the control cards
+      if ( (uc($CTLFileName) =~ "^INLINE\:|^INLINE\=") || ( uc($CTLFileName) eq 'INLINE') ) {    # does the ctl file start with either INLINE: or INLINE= or is just the word INLINE
+        loadInlineFileCTL($fileRef);             # load the CTL file
+      }
+      else { # it is a real file
+        # generate the CTL File full name
+        my $skelCTLDir = $ENV{'SKLCTLDIR'};
+        if ( ! defined($skelCTLDir) ) { $skelCTLDir = ''; }
+        if ( $skelCTLDir eq "" ) {                          # just use the supplied names
+          $skelCTLFullName = $CTLFileName;
+        }
+        elsif ( substr($skelCTLDir,-1,1) eq $dirSep  ) {    # has a terminating directory separator
+          $skelCTLFullName = "$skelCTLDir$CTLFileName";
+        }
+        else { # no separator so add one
+          $skelCTLFullName = "$skelCTLDir$dirSep$CTLFileName";
+        }
+  
+        displayDebug("Data file will be $skelDataFullName, CTL file will be $skelCTLFullName",1,$currentSubroutine);
+        # now load the control file .....
+        loadFileCTL($fileRef, $skelCTLFullName);
+      }
+      
+      if ( ! defined ($ctlArray{$fileRef} ) ) {              # control file was not loaded
+        displayError("CTL file has not been loaded ($skelCTLFullName)\nThis )FXDOF will be ignored",$currentSubroutine);
+        return;
+      }
+
+      # must have at least 3 field definitions
+      
+      my $numCTLLines = $#{$ctlLines[$ctlArray{$fileRef}]} + 1;                         # number of control lines in the array slice applicable to $ctlRef
+      if ( $numCTLLines < 3 ) { # not enough fields to work with
+        displayError("CTL file hasn't got enough fields defined - only found $numCTLLines.\nThis )FXDOF will be ignored",$currentSubroutine);
+        return;
+      }
+      
+      # save the current file ref
+      $currentFileRef = $fileRef;      
+      setVariable('LASTFXTABCount','0');                       # initialise variable
+      
+      # process the data 
+      
+      # now process the open
+      if ( ! open ( $skelFileHandle{$fileRef}, "<", "$skelDataFullName" ) ) { # returns 1 if all is ok (and attempts to read the first row)
+        # file not found (possibly)
+        displayError("Unable to open $skelDataFullName.\nError: $?",$currentSubroutine);
+        return;
+      }
+      else { # ctl file and data file were opened ok
+      
+        # get the field names
+        my $ctlCard = $ctlLines[$ctlArray{$fileRef}][0];           # load first control card
+        my $delimiter = substr($ctlCard,0,1);                      # first char is the delimiter
+        my ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8);  # at this point only concerned about field name
+        my $var1 = $fldName;
+        $ctlCard = $ctlLines[$ctlArray{$fileRef}][1];           # load first control card
+        $delimiter = substr($ctlCard,0,1);                      # first char is the delimiter
+        ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8);  # at this point only concerned about field name
+        $firstColHeader = headerise($fldName);
+        my $var2 = $fldName;
+        $ctlCard = $ctlLines[$ctlArray{$fileRef}][2];           # load first control card
+        $delimiter = substr($ctlCard,0,1);                      # first char is the delimiter
+        ($delNull,$delimType,$fldName, $fldStart, $fldLen, $condStart, $condLen, $condValue) = split (/[$delimiter]/,$ctlCard,8);  # at this point only concerned about field name
+        my $var3 = $fldName;
+        
+        # read the first record
+        displayDebug("About to enter record loop",2,$currentSubroutine);
+        my $skelFileRecord = readDataFileRecord($skelFileHandle{$fileRef}, $fileRef, 'X');
+        while ( defined($skelFileRecord) ) {                     # there is data to process
+          # a record was returned
+          setDefinedVariablesForFile($fileRef, $skelFileRecord); # Set all of the variables
+          
+          if ( ($selectCond ne '') && ! evaluateCondition(substituteVariables($selectCond)) ) { # this record is not to be processed
+            next;
+          }
+
+          # process the data .....
+           
+          my $val0 = getVariable($var1);
+          my $val1 = getVariable($var2);
+          my $val2 = getVariable($var3);
+          
+          displayDebug("In record/file loop",2,$currentSubroutine);
+              
+          if ( defined( $colData {$val0} { $val1} )) { 
+            $colDataCount {$val0} { $val1} ++;
+            if ($actionType eq 'SUM') { # add in a reocurrance ......
+              $colData {$val0} { $val1} += $val2;
+            }
+            elsif ($actionType eq 'CNT') { # just count the entries .....
+              $colData {$val0} { $val1} ++;
+            }
+            elsif ($actionType eq 'AVG') { # just count the entries .....
+              my $tmp_avg = ($colData {$val0} { $val1}) * ( $colDataCount {$val0} { $val1} - 1); # establish the total value
+              $tmp_avg += $val2 ;
+              $colData {$val0} { $val1} = $tmp_avg / ($colDataCount {$val0} { $val1});
+            }
+            elsif ($actionType eq 'MIN') { # just count the entries .....
+              if ( $colData {$val0} { $val1} > $val2 ) { # new value is smaller so remember it
+                $colData {$val0} { $val1} = $val2;
+              }
+            }
+            elsif ($actionType eq 'MAX') { # just count the entries .....
+              if ( $colData {$val0} { $val1} < $val2 ) { # new value is larger so remember it
+                $colData {$val0} { $val1} = $val2;
+              }
+            }
+          }
+          else { # entry is not defined
+            $colDataCount {$val0} { $val1} = 1;
+            if ($actionType eq 'CNT') { # just count the entries .....
+              $colData {$val0} { $val1} = 1;
+            }
+            else { # all others initialise with the value
+              $colData {$val0} { $val1} = $val2;
+            }
+          }
+            
+          # move on to the next row now .....
+          $skelFileRecord = readDataFileRecord($skelFileHandle{$fileRef}, $fileRef, 'X');
+
+        } # end of while loop 
+          
+        # no more data - now just output it all
+          
+        if ( $outputMode eq "HTTP" ) {  # output it as a html table
+          $FTABNumber++;
+          outputLine("<table border=\"1\" id=\"FTAB$FTABNumber\"><tr><th>$firstColHeader</th>\n");
+          foreach my $key1 ( sort keys %colData ) {
+            outputLine("<th>$key1</th>");
+            foreach my $key2 (keys %{ $colData {$key1}} ) {
+              $revColData {$key2} { $key1} = $colData {$key1} {$key2};
+            }
+          }     
+          outputLine("</tr>\n");
+            
+          # heading now output so now dump the data .....
+		  my $tmpHREF; 
+              
+          foreach my $rowKey ( sort keys %revColData ) { # for each row element
+            outputLine("<tr><td>$rowKey</td>\n");
+            foreach my $headKey ( sort keys %colData ) { # loop through available columns
+		      $tmpHREF = $HREFEntry;
+		      if ( $HREFEntry ne '' ) { # references should be generated - so do substitutions now
+		        $tmpHREF =~ s/ROWNAME/$rowKey/g;
+		        $tmpHREF =~ s/COLNAME/$headKey/g;
+		      }
+		      my $tmpValue;
+              if ( defined ($revColData {$rowKey} {$headKey} ) ) { # element exists
+                $tmpValue = $revColData {$rowKey} {$headKey};
+                if ( $actionType eq 'MRK' ) { $tmpValue = $MRKEntry; }
+		      }
+		      else {
+		        $tmpValue = '-';
+                if ( $actionType eq 'MRK' ) { $tmpValue = $MRKEmpty; }
+		      }
+				  
+		      if ( $tmpHREF ne '' ) { # address link should be put in
+                outputLine("<td><a href=\"$tmpHREF\">$tmpValue</a></td>");
+		      }
+		      else { # just output the plain entry
+                outputLine("<td>$tmpValue</td>");
+              }
+            }
+            outputLine("</tr>\n");
+          }
+              
+          outputLine("</table>\n");
+        }
+        else { # just put out data to the terminal
+          my $a =  Dumper \%colData;
+          displayDebug($a,2,$currentSubroutine);
+          my $outLine = '!' . $firstColHeader;
+          outputLine("");
+          foreach my $key1 ( sort keys %colData ) {
+            $outLine .= "\!$key1";
+            foreach my $key2 (keys %{ $colData {$key1}} ) {
+              $revColData {$key2} { $key1} = $colData {$key1} {$key2};
+            }
+          }
+          outputLine("$outLine");
+
+          # heading now output so now dump the data .....
+          $a = Dumper \%revColData;
+          displayDebug($a,2,$currentSubroutine);
+          $outLine = '';
+
+          foreach my $rowKey ( sort keys %revColData ) { # for each row element
+            $outLine .= "$rowKey";
+            foreach my $headKey ( sort keys %colData ) { # loop through available columns
+              if ( defined ($revColData {$rowKey} {$headKey} ) ) { # element exists
+                my $tmpRCD = $revColData {$rowKey} {$headKey};
+                $outLine .= "\!$tmpRCD";
+              }
+              else { # element doesn't exist
+                $outLine .= "\!-";
+              }
+            }
+            outputLine("$outLine");
+            $outLine = '';     #initialise the output line
+          }
+        }
+      }
+
+      $selectCond = '';              # turn off any prevailing select conditions (they only last one use)
+          
+      undef $skelFileHandle{$fileRef};                       # undefine the file handle to free it up
+      undef $skelFileStatus{$fileRef};                       # undefine the status entry
+
+    }
+    else { # Skipped because within a failed or empty  )DOT
+      displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+    }
+  }
+  else { # Skipped because within a failed )SEL
+    displayDebug("Skipped: $card. Sel Count = $skelSELCount, SEL Resume Level = $skelSEL_resumeLevel",2,$currentSubroutine);
+  }
+} # end of processFXDOF
 
 sub processDOCMD {
   # -----------------------------------------------------------
@@ -6819,6 +7543,7 @@ sub processENDDOT {
         $lastFlagSet = 0;
       }
       elsif ( getNextRecord($currentCursorConnection) ) { #  data returned
+        setVariable('LASTDOTCount',$cursorRowNumber{$currentCursorConnection});
         displayDebug("Data returned and put in Array. ",2,$currentSubroutine);
         $currentSkelLine = $DOTLocation{$currentCursorConnection};        # reset current skeleton line to the beginning of the loop
       }
@@ -8500,7 +9225,7 @@ sub processSKELVERS {
   # -----------------------------------------------------------
   # Routine to process the SKELVERS statemnent. The format of the statement is:
   #
-  # )SKELVERS  $Id: processSkeleton.pm,v 1.145 2019/07/28 23:48:48 db2admin Exp db2admin $
+  # )SKELVERS  $Id: processSkeleton.pm,v 1.149 2019/08/26 03:11:56 db2admin Exp db2admin $
   #
   # Usage: processVERSION(<control card>)
   # Returns: sets the internal variable skelVers
@@ -8844,8 +9569,18 @@ sub processControlCard {
   elsif ( $skelCardType eq ")FDOF" ) {      # FDOF Control Card - display a file - of the form )FDOF [<fileName> [using <CTLFileName>]]
     processFDOF($card);
   }
+  elsif ( $skelCardType eq ")FVDOF" ) {      # FVDOF Control Card - display a file vertically - of the form )FDOF [<fileName> [using <CTLFileName>]]
+    processFVDOF($card);
+  }
+  elsif ( $skelCardType eq ")FXDOF" ) {      # FXDOF Control Card - display a file in a cross tab display - of the form )FXDOF <fileName> [action] [using <CTLFileName>]
+    processFXDOF($card);
+  }
   elsif ( $skelCardType eq ")ENDDOF" ) {   # ENDDOF Control Card - terminate a DOF control loop
     processENDDOF($card);
+  }
+  elsif ( $skelCardType eq ")END_OF_INLINE" ) {   # END_OF_INLINE Control Card - ignore this card - it should only every get here it is missing a preceding INLINE command
+    displayError(")END_OF_INLINE card found without preceding INLINE. Card will be ignored.", $currentSubroutine);
+    return;
   }
   elsif ( $skelCardType eq ")ENDDOEXEC" ) {   # ENDDOF Control Card - terminate a DOF control loop
     processENDDOEXEC($card);
@@ -9510,6 +10245,46 @@ sub processFunction {
     return $baseString;                         # 
 
   } # end of WEBSAFE function
+  elsif ( uc($function) eq "DATEDIFF" ) { # TIMEDIFF function
+    my $date1 = getToken($card);                         # timestamp 1
+    my $date2 = getToken($card);                         # timestamp 2
+    my $returnUnit = getToken($card);
+    
+    if ( $returnUnit eq '' ) { $returnUnit = 'D' }
+    elsif ( " T D H M S " !~ $returnUnit ) { # check the unit of measurement to be returned
+      displayError("Unit of measurement being returned ($returnUnit) is not right. It MUST be one of T, D, H, M or S. Defaulted to 'D'",$currentSubroutine);
+      $returnUnit = 'D';
+    }
+    
+    if ( $date2 eq '' ) { $date2 = getDate; }
+    
+    $date1 = substr($date1 . '          ',0,10);
+    $date2 = substr($date2 . '          ',0,10);
+    
+    # DATEDIFF MUST have at least 1 parm
+
+    if ( $date1 eq "" ) { # no parameters have been displayed
+      displayError("DATEDIFF function format is:\n)FUNC DATEDIFF xxx = <DATE string> [<DATE string> [Unit returned]] \nNote: It MUST have at least 1 parameter - Function will return 0",$currentSubroutine);
+      return '0';
+    }
+    
+    if ( ! isValidDate($date1) ) {
+      displayError("First date is not a valid format. Format is:\n)YYYY-MM-DD or YYYY.MM.DD - Function will return 0",$currentSubroutine);
+      return '0';
+    }
+    
+    if ( ! isValidDate($date2) ) {
+      displayError("Second date is not a valid format. Format is:\n)YYYY-MM-DD or YYYY.MM.DD - Function will return 0",$currentSubroutine);
+      return '0';
+    }
+     
+    # at this point all parms entered are correct
+
+    displayDebug("Date1=$date1, Date2=$date2, Unit Returned=$returnUnit",2,$currentSubroutine);
+
+    return performDateSubtraction($date1, $date2, $returnUnit);   # return the date difference
+    
+  }  # end of DATEDIFF Function
   elsif ( uc($function) eq "TIMEDIFF" ) { # TIMEDIFF function
     my $time1 = getToken($card);                         # timestamp 1
     my $time2 = getToken($card);                         # timestamp 2
@@ -9578,8 +10353,8 @@ sub processFunction {
     # DATEADJ MUST have at least 1 parm
 
     if ( $date1 eq "" ) { # no parameters have been displayed
-      displayError("DATEADJ function format is:\n)FUNC DATEADJ xxx = <date string> [<duration>]\nNote: It MUST have at least 1 parameter - Function will return current timestamp",$currentSubroutine);
-      return getCurrentTimestamp();
+      displayError("DATEADJ function format is:\n)FUNC DATEADJ xxx = <date string> [<duration>]\nNote: It MUST have at least 1 parameter - Function will return current date",$currentSubroutine);
+      return getdate();
     }
     
     if ( $dur eq '' ) { # second parameter not set - just return the first parameter
@@ -10601,5 +11376,4 @@ sub processSkeleton {
 } # end of processSkeleton
 
 1;
-
 
